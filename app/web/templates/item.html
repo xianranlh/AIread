@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }} · {{ site_title }}{% endblock %}
+{% block content %}
+<article class="detail">
+  <div class="card-head">
+    <span class="badge badge-src">{{ item.source }}</span>
+    {% if item.category %}<a class="badge badge-cat" href="/category/{{ item.category }}">{{ item.category }}</a>{% endif %}
+    {% if item.score %}<span class="badge badge-score">{{ "%.1f"|format(item.score) }}</span>{% endif %}
+    <span class="muted">{{ item.run_date }}</span>
+  </div>
+  <h1>{{ item.title }}</h1>
+  <p><a class="origin" href="{{ item.url }}" target="_blank" rel="noopener">原始链接 ↗</a>
+  {% if item.metrics.hn_url %} · <a class="origin" href="{{ item.metrics.hn_url }}" target="_blank" rel="noopener">HN 讨论 ↗</a>{% endif %}</p>
+
+  {% if item.explanation %}
+  {% set e = item.explanation %}
+  <div class="one-liner-big">{{ e.one_liner }}</div>
+
+  <h2>它解决什么问题</h2>
+  <div class="prose">{{ e.problem | md | safe }}</div>
+
+  <h2>工作原理</h2>
+  <div class="prose">{{ e.how_it_works | md | safe }}</div>
+
+  {% if e.highlights %}
+  <h2>亮点</h2>
+  <ul class="prose">{% for h in e.highlights %}<li>{{ h }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  {% if e.getting_started %}
+  <h2>10 分钟上手</h2>
+  <div class="prose">{{ e.getting_started | md | safe }}</div>
+  {% endif %}
+
+  {% if e.prerequisites %}
+  <h2>前置知识</h2>
+  <ul class="prose">{% for p in e.prerequisites %}<li>{{ p }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  {% if e.related %}
+  <h2>同类对比</h2>
+  <ul class="prose">{% for r in e.related %}<li>{{ r }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  <h2>怎么看</h2>
+  <div class="prose verdict">{{ e.verdict | md | safe }}</div>
+
+  {% if e.confidence_notes %}
+  <div class="confidence">⚠️ 不确定性说明：{{ e.confidence_notes }}</div>
+  {% endif %}
+  {% else %}
+  <p class="prose">{{ item.summary or "该条目未生成深度讲解。" }}</p>
+  {% endif %}
+
+  <div class="card-foot">
+    {% for t in item.tags %}<a class="tag" href="/tag/{{ t }}">#{{ t }}</a>{% endfor %}
+  </div>
+
+  <section class="ask-sec">
+    <h2>💬 继续提问</h2>
+    <p class="muted">基于该条目的 README/讲解材料由 AI 回答（需管理密码，会产生少量 token 费用）</p>
+    <div class="ask-box">
+      <textarea id="ask-q" rows="2" maxlength="500" placeholder="例如：它和同类项目相比的核心差异是什么？"></textarea>
+      <button id="ask-btn" class="btn-primary" type="button">提问</button>
+    </div>
+    <div id="ask-out" class="prose ask-out"></div>
+  </section>
+</article>
+
+{% if prev_item or next_item %}
+<div class="pager">
+  {% if prev_item %}<a href="/item/{{ prev_item.id }}">← {{ prev_item.title[:40] }}</a>{% else %}<span></span>{% endif %}
+  {% if next_item %}<a href="/item/{{ next_item.id }}">{{ next_item.title[:40] }} →</a>{% endif %}
+</div>
+{% endif %}
+
+{% if related %}
+<section class="related-sec">
+  <h2 class="section-title">🧭 继续学习</h2>
+  <ul>
+  {% for r in related %}
+    <li><a href="/item/{{ r.id }}">{{ r.title }}</a> <span class="muted">{{ r.category }} · {{ r.run_date }}</span></li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<script>
+(function () {
+  var pwd = "";
+  var btn = document.getElementById("ask-btn");
+  var out = document.getElementById("ask-out");
+  btn.addEventListener("click", function () {
+    var q = document.getElementById("ask-q").value.trim();
+    if (!q) { return; }
+    if (!pwd) { pwd = window.prompt("管理密码（用户名 admin）") || ""; }
+    if (!pwd) { return; }
+    out.textContent = "思考中…（约 10-30 秒）";
+    btn.disabled = true;
+    fetch(window.location.pathname + "/ask", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Basic " + btoa("admin:" + pwd)
+      },
+      body: JSON.stringify({question: q})
+    }).then(function (r) {
+      if (r.status === 401) { pwd = ""; throw new Error("密码错误，请重试"); }
+      return r.json();
+    }).then(function (d) {
+      if (d.ok) {
+        out.innerHTML = d.answer_html + '<p class="muted">由 ' + d.model + ' 回答，请核实关键信息</p>';
+      } else { out.textContent = "✗ " + (d.error || "未知错误"); }
+    }).catch(function (e) {
+      out.textContent = "✗ " + e.message;
+    }).finally(function () { btn.disabled = false; });
+  });
+})();
+</script>
+{% endblock %}

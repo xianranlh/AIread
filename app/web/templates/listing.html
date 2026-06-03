@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }} · {{ site_title }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ heading }}</h1></div>
+{% if items %}
+  {% for item in items %}{% include "_item_card.html" %}{% endfor %}
+  {% if page %}
+  <div class="pager">
+    {% if page > 1 %}<a href="{{ base_url }}?page={{ page - 1 }}">← 上一页</a>{% endif %}
+    {% if items|length >= 30 %}<a href="{{ base_url }}?page={{ page + 1 }}">下一页 →</a>{% endif %}
+  </div>
+  {% endif %}
+{% else %}
+  <p class="muted">{% if search_q is defined and not search_q %}输入关键词搜索收录的项目与技术。{% else %}暂无内容。{% endif %}</p>
+{% endif %}
+{% endblock %}

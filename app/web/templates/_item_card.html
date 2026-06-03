@@ -1,0 +1,27 @@
+<article class="card {% if item.status == 'explained' %}card-deep{% endif %}">
+  <div class="card-head">
+    <span class="badge badge-src">{{ item.source }}</span>
+    {% if item.category %}<a class="badge badge-cat" href="/category/{{ item.category }}">{{ item.category }}</a>{% endif %}
+    {% if item.score %}<span class="badge badge-score">{{ "%.1f"|format(item.score) }}</span>{% endif %}
+  </div>
+  <h2 class="card-title">
+    {% if item.explanation %}<a href="/item/{{ item.id }}">{{ item.title }}</a>
+    {% else %}<a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }} ↗</a>{% endif %}
+  </h2>
+  {% if item.explanation %}
+    <p class="one-liner">{{ item.explanation.one_liner }}</p>
+  {% elif item.summary %}
+    <p class="one-liner muted">{{ item.summary[:160] }}</p>
+  {% endif %}
+  {% if item.score_reason %}<p class="reason">💡 {{ item.score_reason }}</p>{% endif %}
+  <div class="card-foot">
+    {% for t in item.tags %}<a class="tag" href="/tag/{{ t }}">#{{ t }}</a>{% endfor %}
+    {% set m = item.metrics %}
+    <span class="heat">
+      {% if m.stars %}⭐ {{ m.stars }}{% if m.stars_today %} (+{{ m.stars_today }}/天){% endif %}{% endif %}
+      {% if m.points %}▲ {{ m.points }}{% endif %}
+      {% if m.upvotes %}▲ {{ m.upvotes }}{% endif %}
+    </span>
+    {% if item.explanation %}<a class="more" href="/item/{{ item.id }}">深度讲解 →</a>{% endif %}
+  </div>
+</article>

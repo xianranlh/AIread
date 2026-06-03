@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}运行统计 · {{ site_title }}{% endblock %}
+{% block content %}
+<article class="detail">
+  <h1>运行统计</h1>
+
+  <h2>累计 LLM 用量与成本估算 <span class="muted">（共 {{ total_cost }}，按官方标价估算）</span></h2>
+  <table class="stats-table">
+    <tr><th>模型</th><th>输入 tokens</th><th>输出 tokens</th><th>估算成本</th></tr>
+    {% for m in models %}
+    <tr><td>{{ m.model }}</td><td>{{ "{:,}".format(m.tin) }}</td><td>{{ "{:,}".format(m.tout) }}</td><td>{{ m.cost }}</td></tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">暂无数据</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>每日收录趋势（近 14 天）</h2>
+  <div class="bars">
+    {% for t in trend %}
+    <div class="bar-row">
+      <span class="bar-label">{{ t.date[5:] }}</span>
+      <span class="bar-track"><span class="bar-fill" style="width: {{ t.pct }}%"></span></span>
+      <span class="bar-num">{{ t.n }} 条 / 深讲 {{ t.ex }}</span>
+    </div>
+    {% else %}<p class="muted">暂无数据</p>{% endfor %}
+  </div>
+
+  <h2>数据源健康度（近 7 天采集量）</h2>
+  <div class="bars">
+    {% for s in sources %}
+    <div class="bar-row">
+      <span class="bar-label">{{ s.source }}</span>
+      <span class="bar-track"><span class="bar-fill" style="width: {{ s.pct }}%"></span></span>
+      <span class="bar-num">{{ s.n }}</span>
+    </div>
+    {% else %}<p class="muted">暂无数据（某源持续为 0 说明该源可能挂了，查 scheduler 日志）</p>{% endfor %}
+  </div>
+
+  <h2>最近 30 次运行</h2>
+  <table class="stats-table">
+    <tr><th>时间</th><th>耗时</th><th>采集</th><th>入库</th><th>精选</th><th>深讲</th><th>tokens 入/出</th><th>状态</th></tr>
+    {% for r in runs %}
+    <tr>
+      <td>{{ r.at }}</td><td>{{ r.dur }}</td><td>{{ r.collected }}</td><td>{{ r.inserted }}</td>
+      <td>{{ r.selected }}</td><td>{{ r.explained }}</td>
+      <td>{{ "{:,}".format(r.tin) }} / {{ "{:,}".format(r.tout) }}</td>
+      <td>{{ "✓" if r.ok else "✗ 未完成" }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="muted">暂无运行记录</td></tr>
+    {% endfor %}
+  </table>
+</article>
+{% endblock %}

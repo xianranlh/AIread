@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+{% if run_date %}
+  <div class="page-head">
+    <h1>{{ run_date }} 精选</h1>
+    <div class="date-nav">
+      {% if prev_date %}<a href="/archive/{{ prev_date }}{% if deep %}?deep=1{% endif %}">← {{ prev_date }}</a>{% else %}<span class="muted">已是最早</span>{% endif %}
+      <span class="sep">·</span>
+      {% if next_date %}<a href="/archive/{{ next_date }}{% if deep %}?deep=1{% endif %}">{{ next_date }} →</a>{% else %}<span class="muted">已是最新</span>{% endif %}
+      <span class="sep">|</span>
+      {% if deep %}<a href="?">显示全部</a>{% else %}<a href="?deep=1">只看深讲</a>{% endif %}
+    </div>
+    {% if not archive_mode and total is not none %}<p class="muted">AI 已从全网数百条信息中筛出以下 {{ items|length }} 条 · 累计收录 {{ total }} 条</p>{% endif %}
+  </div>
+  {% set deep_items = items | selectattr("status", "equalto", "explained") | list %}
+  {% set rest = items | rejectattr("status", "equalto", "explained") | list %}
+  {% if deep_items %}
+    <h2 class="section-title">🔍 深度讲解</h2>
+    {% for item in deep_items %}{% include "_item_card.html" %}{% endfor %}
+  {% endif %}
+  {% if rest %}
+    <h2 class="section-title">📋 也值得一看</h2>
+    {% for item in rest %}{% include "_item_card.html" %}{% endfor %}
+  {% endif %}
+  {% if not items %}<p class="muted">该日期没有符合条件的内容。</p>{% endif %}
+{% else %}
+  <div class="empty">
+    <h1>还没有数据</h1>
+    <p>先运行一次管线：<code>docker compose run --rm scheduler python -m app.pipeline</code></p>
+  </div>
+{% endif %}
+{% endblock %}

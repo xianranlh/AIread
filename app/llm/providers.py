@@ -1,0 +1,114 @@
+"""三种 provider：anthropic / openai_compat（DeepSeek/Qwen/Kimi 等）/ mock。
+
+凭据由 LLMRoleConfig 显式传入（来自网页设置或 .env），每个角色可用不同端点。
+"""
+import hashlib
+import json
+
+from app.llm.base import LLMClient, LLMResponse
+from app.llm.config import LLMRoleConfig
+
+
+class AnthropicClient(LLMClient):
+    def __init__(self, model: str, api_key: str, base_url: str = ""):
+        import anthropic
+        if not api_key:
+            raise RuntimeError("缺少 Anthropic API Key")
+        kw = {"api_key": api_key}
+        if base_url:
+            kw["base_url"] = base_url  # 可填中转网关
+        self.client = anthropic.Anthropic(**kw)
+        self.model = model
+
+    def complete(self, system: str, user: str, max_tokens: int = 1024) -> LLMResponse:
+        msg = self.client.messages.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        text = "".join(b.text for b in msg.content if b.type == "text")
+        return LLMResponse(
+            text=text,
+            tokens_in=msg.usage.input_tokens,
+            tokens_out=msg.usage.output_tokens,
+            model=self.model,
+        )
+
+
+class OpenAICompatClient(LLMClient):
+    """任何 OpenAI 兼容端点：DeepSeek / OpenAI / Qwen / Kimi / 智谱 / 本地 Ollama 等。"""
+
+    def __init__(self, model: str, api_key: str, base_url: str):
+        from openai import OpenAI
+        if not api_key:
+            raise RuntimeError("缺少 API Key (openai_compat)")
+        if not base_url:
+            raise RuntimeError("缺少 base_url (openai_compat)")
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.model = model
+
+    def complete(self, system: str, user: str, max_tokens: int = 1024) -> LLMResponse:
+        resp = self.client.chat.completions.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        usage = resp.usage
+        return LLMResponse(
+            text=resp.choices[0].message.content or "",
+            tokens_in=getattr(usage, "prompt_tokens", 0) or 0,
+            tokens_out=getattr(usage, "completion_tokens", 0) or 0,
+            model=self.model,
+        )
+
+
+class MockClient(LLMClient):
+    """离线/无 Key 时跑通全流程用：返回确定性的合规 JSON。"""
+
+    def __init__(self, model: str = "mock"):
+        self.model = model
+
+    def complete(self, system: str, user: str, max_tokens: int = 1024) -> LLMResponse:
+        if "打分" in system or "score" in system.lower():
+            ids = []
+            for line in user.splitlines():
+                if line.strip().startswith('{"id":'):
+                    try:
+                        ids.append(json.loads(line.rstrip(","))["id"])
+                    except Exception:
+                        pass
+            results = []
+            for i in ids:
+                h = int(hashlib.md5(str(i).encode()).hexdigest(), 16)
+                results.append({
+                    "id": i, "score": 5.0 + (h % 50) / 10, "category": "开发工具",
+                    "tags": ["mock", "测试"], "reason": "Mock 打分",
+                    "worth_deep_dive": True,
+                })
+            return LLMResponse(text=json.dumps(results, ensure_ascii=False), model=self.model)
+        if "周报" in system:
+            return LLMResponse(text="## 本周综述（Mock）\n\n这是 Mock 模式生成的占位周报。", model=self.model)
+        if "连接测试" in user:
+            return LLMResponse(text="OK", model=self.model)
+        exp = {
+            "one_liner": "（Mock）这是一个占位讲解，配置真实 API Key 后将由 LLM 生成。",
+            "problem": "演示用占位内容。", "how_it_works": "演示用占位内容。",
+            "highlights": ["占位亮点 1", "占位亮点 2"],
+            "getting_started": "pip install demo", "prerequisites": ["无"],
+            "related": [], "verdict": "占位结论。", "confidence_notes": "Mock 模式生成",
+        }
+        return LLMResponse(text=json.dumps(exp, ensure_ascii=False), model=self.model)
+
+
+def make_client(cfg: LLMRoleConfig) -> LLMClient:
+    if cfg.provider == "anthropic":
+        return AnthropicClient(cfg.model, cfg.api_key, cfg.base_url)
+    if cfg.provider == "openai_compat":
+        return OpenAICompatClient(cfg.model, cfg.api_key, cfg.base_url)
+    if cfg.provider == "mock":
+        return MockClient(cfg.model or "mock")
+    raise ValueError(f"未知 provider: {cfg.provider}")

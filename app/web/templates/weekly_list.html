@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}周报 · {{ site_title }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>每周综述</h1></div>
+{% if weeks %}
+<ul class="archive-list">
+  {% for w in weeks %}
+  <li><a href="/weekly/{{ w.week }}">{{ w.week }} 周报</a> <span class="muted">{{ w.created_at[:10] }}</span></li>
+  {% endfor %}
+</ul>
+{% else %}<p class="muted">暂无周报（每周日自动生成，也可手动：<code>python -m app.weekly</code>）。</p>{% endif %}
+{% endblock %}

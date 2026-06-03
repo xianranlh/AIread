@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}关于 · {{ site_title }}{% endblock %}
+{% block content %}
+<article class="detail">
+  <h1>关于本站</h1>
+  <div class="prose">
+    <p>这是一个全自动运行的 AI 技术雷达：每天定时从 GitHub Trending、GitHub 新晋高星、Hacker News、arXiv、Hugging Face、各大实验室博客采集信息，由 AI 去重、打分、筛选，并对最值得关注的条目生成结构化深度讲解。</p>
+    <p>所有讲解由 AI 基于 README / 论文摘要 / 社区讨论等一手材料生成，并标注不确定之处，但仍可能有错漏——请以原始链接为准。</p>
+  </div>
+  {% if last_run %}
+  <h2>最近一次运行</h2>
+  <ul class="prose">
+    <li>时间：{{ last_run.finished_at }}</li>
+    <li>采集 {{ stats.collected or '?' }} 条 → 清洗后 {{ stats.cleaned or '?' }} 条 → 新入库 {{ stats.inserted or '?' }} 条 → 精选 {{ stats.selected or '?' }} 条 → 深度讲解 {{ stats.explained or '?' }} 篇</li>
+    {% if stats.tokens %}<li>本次 LLM 用量：输入 {{ stats.tokens['in'] }} / 输出 {{ stats.tokens['out'] }} tokens（{{ stats.tokens.calls }} 次调用）</li>{% endif %}
+  </ul>
+  {% endif %}
+</article>
+{% endblock %}
