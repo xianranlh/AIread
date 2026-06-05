@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}{{ q.question[:40] }} · {{ site_title }}{% endblock %}
+{% block content %}
+<div id="quiz-single" data-q='{{ q_json }}'></div>
+<p class="muted" style="margin:18px 0"><a href="/quiz/domain/{{ q.domain }}">← {{ q.domain_label }} 题库</a> · <a href="/quiz">复习概览</a></p>
+<div id="quiz-ratebar" hidden></div>
+<script src="/static/quiz.js"></script>
+{% endblock %}

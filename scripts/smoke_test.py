@@ -153,6 +153,68 @@ def main():
         assert "skipped" in skip, "未配置渠道应跳过"
     print("✓ /stats、问答、材料存档、deep 过滤、推送摘要")
 
+    # --- 浮动笔记助手 ---
+    assert "ai-fab" in client.get("/").text, "首页应有悬浮按钮"
+    assert client.get("/static/assistant.js").status_code == 200
+    r = client.get("/api/models")
+    assert r.status_code == 200 and len(r.json()["models"]) == 3, "模型列表应公开且含三角色"
+    payload = {"role": "explainer",
+               "page": {"title": "测试页", "url": "http://x/item/1", "item_id": item_id},
+               "selection": "选中的一段内容", "instruction": "记要点"}
+    assert client.post("/api/note", json=payload).status_code == 401, "笔记未认证应 401"
+    d = client.post("/api/note", json=payload, auth=auth).json()
+    assert d["ok"] and d["markdown"].startswith("#") and d["id"], f"笔记生成失败: {d}"
+    nid = d["id"]
+    assert client.get("/notes", auth=auth).status_code == 200
+    assert client.get(f"/notes/{nid}", auth=auth).status_code == 200
+    md_r = client.get(f"/notes/{nid}.md", auth=auth)
+    assert md_r.status_code == 200 and "Mock" in md_r.text
+    assert client.get("/notes/export.md", auth=auth).status_code == 200
+    r = client.post(f"/notes/{nid}/delete", auth=auth, follow_redirects=False)
+    assert r.status_code == 303
+    n_left = client.get("/notes", auth=auth).text.count("/delete")
+    print(f"✓ 浮动笔记助手（按钮/模型列表/生成/查看/下载/导出/删除，剩余笔记 {n_left}）")
+
+    # --- 八股复习系统 ---
+    r = client.get("/quiz")  # 自动种子导入
+    assert r.status_code == 200 and "八股复习" in r.text
+    n_q = conn.execute("SELECT COUNT(*) FROM quiz_questions").fetchone()[0]
+    assert n_q == 50, f"种子题应为 50，实际 {n_q}"
+    assert client.get("/quiz/domain/java").status_code == 200
+    assert client.get("/quiz/q/1").status_code == 200
+    assert client.get("/quiz/review").status_code == 200
+    assert client.get("/static/quiz.js").status_code == 200
+    # 队列：全新题库 → 应给新卡
+    d = client.get("/api/quiz/queue").json()
+    assert len(d["queue"]) >= 10, f"队列应有新卡: {d}"
+    # FSRS 评分流转：New→Learning→Review
+    assert client.post("/api/quiz/rate", json={"question_id": 1, "rating": 3}).status_code == 401
+    d = client.post("/api/quiz/rate", json={"question_id": 1, "rating": 3}, auth=auth).json()
+    assert d["ok"] and d["card"]["state"] == 1, f"New+记得应进入学习中: {d}"
+    d = client.post("/api/quiz/rate", json={"question_id": 1, "rating": 3}, auth=auth).json()
+    assert d["card"]["state"] == 2 and d["card"]["scheduled_days"] >= 1, f"应毕业进复习: {d}"
+    d2 = client.get("/api/quiz/q/1").json()
+    assert d2["card"]["retrievability"] is not None and d2["preview"]["3"], "保持率与预览应存在"
+    # Review + 忘了 → Relearning
+    d = client.post("/api/quiz/rate", json={"question_id": 1, "rating": 1}, auth=auth).json()
+    assert d["card"]["state"] == 3, f"复习中答错应进重学: {d}"
+    # 星标 + 出题 + 复盘（Mock）
+    d = client.post("/api/quiz/star/1", auth=auth).json()
+    assert d["starred"] is True
+    assert "⭐" in client.get("/quiz/starred").text
+    d = client.post("/api/quiz/generate", json={"domain": "java", "n": 2}, auth=auth).json()
+    assert d["ok"] and d["added"] == 2, f"AI 出题失败: {d}"
+    d = client.post("/api/quiz/explain/1", auth=auth).json()
+    assert d["ok"] and "详解" in d["answer_html"]
+    d = client.post("/api/quiz/ask/1", json={"question": "追问一下"}, auth=auth).json()
+    assert d["ok"] and d["answer_html"]
+    d = client.post("/api/quiz/save_answer", json={"question_id": 1, "title": "t", "content_md": "x"}, auth=auth).json()
+    assert d["ok"]
+    d = client.post("/api/quiz/retro", auth=auth).json()
+    assert d["ok"] and d["note_id"], f"复盘失败: {d}"
+    assert "八股复盘" in client.get("/notes", auth=auth).text
+    print("✓ 八股系统（种子50题/FSRS流转/队列/星标/出题/详解/追问/收藏/复盘）")
+
     if failures:
         print("\n失败项:", failures)
         sys.exit(1)

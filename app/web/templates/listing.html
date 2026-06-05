@@ -7,7 +7,7 @@
   <h2 class="section-title">📒 笔记库</h2>
   <ul class="notelib-list">
   {% for n in note_libs %}
-    <li><a href="/notes/{{ n.id }}">{{ n.title }}</a>
+    <li><a href="/library/{{ n.id }}">{{ n.title }}</a>
       <span class="muted">{{ (n.metrics | loads).file_count or '?' }} 篇 · {{ n.summary or '' }}</span></li>
   {% endfor %}
   </ul>

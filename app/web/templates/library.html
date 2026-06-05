@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }} · 笔记库 · {{ site_title }}{% endblock %}
+{% block content %}
+{% macro render_node(node) %}
+  {% for name, child in node.dirs.items() %}
+  <li class="toc-dir">
+    <details open>
+      <summary>📁 {{ name }}</summary>
+      <ul class="toc-sub">{{ render_node(child) }}</ul>
+    </details>
+  </li>
+  {% endfor %}
+  {% for f in node.files %}
+  <li class="toc-file{% if f.id == current.id %} toc-active{% endif %}">
+    <a href="/library/{{ item.id }}?note={{ f.id }}" title="{{ f.name }}">📄 {{ f.name }}</a>
+  </li>
+  {% endfor %}
+{% endmacro %}
+<div class="notes-title">
+  <h1>📒 {{ item.title }}</h1>
+  <a class="toc-origin" href="{{ item.url }}" target="_blank" rel="noopener">仓库 ↗</a>
+  <span class="notes-count muted">目录 · 共 {{ file_count }} 个文件</span>
+</div>
+{% if item.summary %}<p class="muted notes-desc">{{ item.summary }}</p>{% endif %}
+<div class="notes-page">
+  <nav class="toc-rail">
+    <ul class="toc-tree">{{ render_node(tree) }}</ul>
+  </nav>
+
+  <main class="notes-content">
+    <div class="notes-path muted">{{ current.path }}</div>
+    <p class="muted doc-tip">提示：选中文字（或右键单词）可「🌐 翻译 / ✏️ 批注」；批注显示在右侧、跟随原文。</p>
+    <div class="doc-main" id="doc-main" data-annot-base="/item/{{ item.id }}" data-admin-user="{{ admin_username }}" data-note-id="{{ current.id }}">
+      <div class="prose">{{ content_html | safe }}</div>
+    </div>
+  </main>
+
+  <aside class="notes-rail" id="notes-rail"></aside>
+</div>
+
+<div id="sel-menu" class="ctx-menu" hidden></div>
+<div id="trans-popup" class="trans-popup" hidden></div>
+<div id="annot-editor" class="annot-editor" hidden>
+  <textarea id="annot-text" rows="3" placeholder="写下批注…（仅自己/管理员可编辑）"></textarea>
+  <div class="annot-editor-foot">
+    <span class="muted annot-quote" id="annot-quote"></span>
+    <span class="spacer" style="flex:1"></span>
+    <button type="button" id="annot-cancel">取消</button>
+    <button type="button" id="annot-save" class="btn-primary">保存</button>
+  </div>
+</div>
+<script src="/static/annot.js"></script>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ note.title }} · {{ site_title }}{% endblock %}
+{% block content %}
+<article class="detail">
+  <div class="card-head">
+    <span class="badge badge-src">笔记</span>
+    <span class="muted">{{ note.created_at[:16].replace("T", " ") }} · {{ note.model }}</span>
+  </div>
+  <div class="prose">{{ content | safe }}</div>
+  <div class="ai-actions" style="margin-top:18px">
+    <a class="btn-test" style="text-decoration:none" href="/notes/{{ note.id }}.md">下载 .md</a>
+    {% if note.source_url %}<a class="muted" href="{{ note.source_url }}" target="_blank">来源页面 ↗</a>{% endif %}
+    <a class="muted" href="/notes">← 全部笔记</a>
+  </div>
+</article>
+{% endblock %}

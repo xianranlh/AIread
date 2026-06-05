@@ -61,6 +61,52 @@ CREATE TABLE IF NOT EXISTS materials (
   created_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS notes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  title      TEXT,
+  source_url TEXT,
+  item_id    INTEGER,
+  content_md TEXT NOT NULL,
+  model      TEXT,
+  created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS quiz_questions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  domain     TEXT NOT NULL,        -- java|python|ai|agent|scene
+  category   TEXT,                 -- 基础|进阶|场景设计
+  question   TEXT NOT NULL,
+  answer_md  TEXT,
+  source     TEXT DEFAULT 'seed',  -- seed|ai
+  starred    INTEGER DEFAULT 0,
+  created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_quiz_domain ON quiz_questions(domain);
+
+CREATE TABLE IF NOT EXISTS quiz_cards (  -- FSRS 卡片状态（每题一卡）
+  question_id    INTEGER PRIMARY KEY REFERENCES quiz_questions(id),
+  state          INTEGER DEFAULT 0,   -- 0New 1Learning 2Review 3Relearning
+  stability      REAL DEFAULT 0,
+  difficulty     REAL DEFAULT 0,
+  due            TEXT,
+  last_review    TEXT,
+  reps           INTEGER DEFAULT 0,
+  lapses         INTEGER DEFAULT 0,
+  scheduled_days REAL DEFAULT 0,
+  elapsed_days   REAL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_quiz_due ON quiz_cards(due);
+
+CREATE TABLE IF NOT EXISTS quiz_reviews (  -- 复习日志（进度/复盘/时间轴）
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  question_id  INTEGER REFERENCES quiz_questions(id),
+  rating       INTEGER,             -- 1忘了 2困难 3记得 4简单
+  state_before INTEGER,
+  due_after    TEXT,
+  reviewed_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_quiz_reviews_at ON quiz_reviews(reviewed_at);
+
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,   -- 如 llm.scorer.provider
   value TEXT
@@ -69,7 +115,7 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS annotations (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   item_id    INTEGER NOT NULL REFERENCES items(id),
-  note_id    INTEGER,              -- 绑定的笔记文件（notes.id）；讲解页为 NULL
+  note_id    INTEGER,              -- 绑定的笔记库文件（note_files.id）；讲解页为 NULL
   quote      TEXT NOT NULL,        -- 选中的原文（用于定位高亮）
   occurrence INTEGER DEFAULT 0,    -- 同段内第几次出现（从0计），消歧
   note       TEXT NOT NULL,        -- 批注内容
@@ -78,14 +124,14 @@ CREATE TABLE IF NOT EXISTS annotations (
 );
 CREATE INDEX IF NOT EXISTS idx_annotations_item ON annotations(item_id);
 
-CREATE TABLE IF NOT EXISTS notes (
+CREATE TABLE IF NOT EXISTS note_files (   -- 笔记库：导入的 GitHub 仓库 markdown 文件
   id      INTEGER PRIMARY KEY AUTOINCREMENT,
   item_id INTEGER NOT NULL REFERENCES items(id),
   path    TEXT NOT NULL,        -- 仓库内文件路径，作目录
   ord     INTEGER DEFAULT 0,    -- 排序
   content TEXT NOT NULL         -- markdown 原文
 );
-CREATE INDEX IF NOT EXISTS idx_notes_item ON notes(item_id);
+CREATE INDEX IF NOT EXISTS idx_note_files_item ON note_files(item_id);
 """
 
 FTS_SCHEMA = """
@@ -110,6 +156,18 @@ def connect(db_path: str | None = None) -> sqlite3.Connection:
 
 
 def init_db(conn: sqlite3.Connection) -> None:
+    # 迁移（必须在建表前）：旧版「笔记库」用的 notes 表(path/ord/content) 改名为 note_files，
+    # 把 notes 这个名字让给「我的笔记」(title/content_md/...)。
+    ncols = {r["name"] for r in conn.execute("PRAGMA table_info(notes)")}
+    if ncols and "path" in ncols and "content_md" not in ncols:  # 旧笔记库表
+        if {r["name"] for r in conn.execute("PRAGMA table_info(note_files)")}:
+            conn.execute("INSERT INTO note_files(item_id, path, ord, content) "
+                         "SELECT item_id, path, ord, content FROM notes")
+            conn.execute("DROP TABLE notes")
+        else:
+            conn.execute("ALTER TABLE notes RENAME TO note_files")
+        # 旧笔记库条目 source/status 'notes' → 'library'
+        conn.execute("UPDATE items SET source='library', status='library' WHERE source='notes'")
     conn.executescript(SCHEMA)
     try:
         conn.executescript(FTS_SCHEMA)

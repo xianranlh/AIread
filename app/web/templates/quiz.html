@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}八股复习 · {{ site_title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>八股复习</h1>
+  <p class="muted">FSRS 间隔重复 · 按遗忘曲线动态安排复习时间</p>
+</div>
+
+<div class="quiz-stats">
+  <div class="qstat"><b>{{ stats.due_now }}</b><span>待复习</span></div>
+  <div class="qstat"><b>{{ stats.reviewed_today }}</b><span>今日已复习</span></div>
+  <div class="qstat"><b>{{ stats.new_cards }}</b><span>新题</span></div>
+  <div class="qstat"><b>{{ stats.total }}</b><span>题库总量</span></div>
+  <div class="qstat"><b>{{ stats.starred }}</b><span>星标</span></div>
+</div>
+
+<div class="quiz-progress">
+  <div class="bar-track big"><span class="bar-fill" style="width: {{ stats.progress }}%"></span></div>
+  <span class="muted">今日进度 {{ stats.progress }}%{% if stats.again_today %} · 答错 {{ stats.again_today }} 次{% endif %}</span>
+</div>
+
+<div class="ai-actions" style="margin: 14px 0 22px">
+  <a class="btn-primary" style="text-decoration:none" href="/quiz/review">▶ 开始复习</a>
+  <button id="quiz-retro-btn" class="btn-test" type="button">📝 生成今日复盘</button>
+  <a class="btn-test" style="text-decoration:none" href="/quiz/starred">⭐ 星标</a>
+  <span id="quiz-ov-status" class="muted"></span>
+</div>
+<div id="quiz-retro-out" class="prose"></div>
+
+<h2 class="section-title">📚 各领域进度</h2>
+<table class="stats-table">
+  <tr><th>领域</th><th>题数</th><th>待复习</th><th>状态分布（新/学习/复习/重学）</th><th></th></tr>
+  {% for d in stats.domains %}
+  <tr>
+    <td><a href="/quiz/domain/{{ d.key }}">{{ d.label }}</a></td>
+    <td>{{ d.total }}</td>
+    <td>{% if d.due %}<b>{{ d.due }}</b>{% else %}0{% endif %}</td>
+    <td>
+      <span class="dist">
+        {% set tt = d.total or 1 %}
+        <i class="seg s0" style="width:{{ d.dist[0] / tt * 100 }}%" title="新 {{ d.dist[0] }}"></i><i class="seg s1" style="width:{{ d.dist[1] / tt * 100 }}%" title="学习中 {{ d.dist[1] }}"></i><i class="seg s2" style="width:{{ d.dist[2] / tt * 100 }}%" title="复习 {{ d.dist[2] }}"></i><i class="seg s3" style="width:{{ d.dist[3] / tt * 100 }}%" title="重学 {{ d.dist[3] }}"></i>
+      </span>
+    </td>
+    <td><a href="/quiz/domain/{{ d.key }}">进入 →</a></td>
+  </tr>
+  {% endfor %}
+</table>
+
+<div class="ai-actions">
+  <select id="gen-domain">{% for k, v in domains.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+  <select id="gen-n"><option>3</option><option selected>5</option><option>8</option></select>
+  <button id="gen-btn" class="btn-test" type="button">🤖 AI 出题扩充</button>
+  <span id="gen-status" class="muted"></span>
+</div>
+
+{% if timeline %}
+<h2 class="section-title">🕐 今日复习时间轴</h2>
+<ul class="qtl">
+  {% for t in timeline %}
+  <li class="qtl-node r{{ t.rating }}">
+    <span class="qtl-dot"></span>
+    <a href="/quiz/q/{{ t.question_id }}">{{ t.question[:48] }}{% if t.question|length > 48 %}…{% endif %}</a>
+    <span class="muted">{{ t.domain_label }} · {{ t.rating_name }} · {{ t.reviewed_at[11:16] }}</span>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+<script src="/static/quiz.js"></script>
+{% endblock %}

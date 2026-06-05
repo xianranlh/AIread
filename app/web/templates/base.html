@@ -18,6 +18,7 @@
       <a href="/learn">学习</a>
       <a href="/explain">生成讲解</a>
       <a href="/explanations">讲解库</a>
+      <a href="/quiz">八股</a>
       <a href="/about">关于</a>
       <a href="/settings" title="模型设置">设置</a>
       <a href="/feed.xml" title="RSS">RSS</a>
@@ -36,5 +37,26 @@
 <footer class="container site-footer">
   <p>内容由 AI 自动采集与生成，可能存在错误，请以原始链接为准 · <a href="/about">关于</a> · <a href="/stats">统计</a></p>
 </footer>
+<div id="ai-fab" title="AI 笔记助手 · 点击打开 / 右键带选中内容打开 / 可拖动">✨</div>
+<div id="ai-panel" hidden>
+  <div class="ai-panel-head">
+    <strong>AI 笔记助手</strong>
+    <select id="ai-model" title="选择模型"></select>
+    <button id="ai-close" type="button" title="关闭">✕</button>
+  </div>
+  <div id="ai-ctx" class="ai-ctx"></div>
+  <textarea id="ai-instr" rows="2" maxlength="500" placeholder="补充要求（可选）：例如「重点讲原理，给最小代码示例」"></textarea>
+  <div class="ai-actions">
+    <button id="ai-gen" class="btn-primary" type="button">生成笔记</button>
+    <span id="ai-status" class="muted"></span>
+  </div>
+  <div id="ai-result" class="prose ai-result"></div>
+  <div class="ai-actions" id="ai-export" hidden>
+    <button id="ai-copy" class="btn-test" type="button">复制 Markdown</button>
+    <button id="ai-dl" class="btn-test" type="button">下载 .md</button>
+    <a href="/notes" target="_blank" class="muted">全部笔记 →</a>
+  </div>
+</div>
+<script src="/static/assistant.js"></script>
 </body>
 </html>

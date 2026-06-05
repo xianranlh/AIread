@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }} · {{ site_title }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ heading }}</h1>
+  <p class="muted"><a href="/quiz">← 复习概览</a></p></div>
+{% if rows %}
+<ul class="archive-list">
+  {% for r in rows %}
+  <li>
+    <span class="badge st{{ r.state or 0 }}">{{ {0:"新题",1:"学习中",2:"复习",3:"重学"}[r.state or 0] }}</span>
+    <a href="/quiz/q/{{ r.id }}">{% if r.starred %}⭐ {% endif %}{{ r.question[:60] }}{% if r.question|length > 60 %}…{% endif %}</a>
+    <span class="muted" style="margin-left:auto">{{ r.category }}{% if r.due and (r.state or 0) != 0 %} · 下次 {{ r.due[:16].replace("T"," ") }}{% endif %}</span>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}<p class="muted">暂无题目。</p>{% endif %}
+{% endblock %}

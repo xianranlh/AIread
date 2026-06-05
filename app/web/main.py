@@ -133,8 +133,8 @@ def item_detail(request: Request, item_id: int):
         row = conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
         if not row:
             return render("404.html", ctx(request), status_code=404)
-        if row["source"] == "notes":  # 笔记库条目 → 跳到笔记库浏览页
-            return RedirectResponse(f"/notes/{item_id}", status_code=307)
+        if row["source"] == "library":  # 笔记库条目 → 跳到笔记库浏览页
+            return RedirectResponse(f"/library/{item_id}", status_code=307)
         items = _rows_to_items(conn, [row])
         related = find_related(conn, item_id)
         # 同一天内按排序的上一篇/下一篇
@@ -223,7 +223,7 @@ def explanations_list(request: Request, page: int = Query(1, ge=1)):
         if page == 1:
             note_libs = [dict(r) for r in conn.execute(
                 """SELECT id, title, summary, metrics, fetched_at FROM items
-                   WHERE source='notes' ORDER BY id DESC""").fetchall()]
+                   WHERE source='library' ORDER BY id DESC""").fetchall()]
         return render("listing.html", ctx(
             request, heading="📚 讲解库（历史讲解）", items=_rows_to_items(conn, rows),
             page=page, base_url="/explanations", note_libs=note_libs))
@@ -598,9 +598,9 @@ async def translate(request: Request, _: str = Depends(require_admin)):
         return {"ok": False, "error": str(e)[:200]}
 
 
-@app.post("/import-notes")
-def import_notes(request: Request, url: str = Form(...),
-                 _: str = Depends(require_admin)):
+@app.post("/import-library")
+def import_library(request: Request, url: str = Form(...),
+                   _: str = Depends(require_admin)):
     """把「知识笔记」类仓库导入为笔记库：抓取所有 .md 文件，按目录浏览（不做 AI 讲解）。"""
     full = _parse_github(url)
     if not full:
@@ -647,28 +647,28 @@ def import_notes(request: Request, url: str = Form(...),
     try:
         ext = external_id(canon)
         row = conn.execute("SELECT id FROM items WHERE external_id=?", (ext,)).fetchone()
-        metrics_json = json.dumps({"notes": True, "file_count": len(files)}, ensure_ascii=False)
+        metrics_json = json.dumps({"library": True, "file_count": len(files)}, ensure_ascii=False)
         if row:
             item_id = row["id"]
-            conn.execute("UPDATE items SET source='notes', title=?, summary=?, metrics=? WHERE id=?",
+            conn.execute("UPDATE items SET source='library', title=?, summary=?, metrics=? WHERE id=?",
                          (full, desc, metrics_json, item_id))
-            conn.execute("DELETE FROM notes WHERE item_id=?", (item_id,))  # 重新导入则覆盖
+            conn.execute("DELETE FROM note_files WHERE item_id=?", (item_id,))  # 重新导入则覆盖
             conn.execute("DELETE FROM explanations WHERE item_id=?", (item_id,))  # 笔记库不保留 AI 讲解
         else:
             item_id = conn.execute(
                 """INSERT INTO items(external_id, source, title, url, summary, metrics,
                                      status, run_date, fetched_at)
                    VALUES (?,?,?,?,?,?,?,?,?)""",
-                (ext, "notes", full, canon, desc, metrics_json,
-                 "notes", date.today().isoformat(), now_iso())).lastrowid
+                (ext, "library", full, canon, desc, metrics_json,
+                 "library", date.today().isoformat(), now_iso())).lastrowid
         for i, (p, content) in enumerate(files):
             conn.execute(
-                "INSERT INTO notes(item_id, path, ord, content) VALUES (?,?,?,?)",
+                "INSERT INTO note_files(item_id, path, ord, content) VALUES (?,?,?,?)",
                 (item_id, p, i, content))
         conn.commit()
     finally:
         conn.close()
-    return RedirectResponse(f"/notes/{item_id}", status_code=303)
+    return RedirectResponse(f"/library/{item_id}", status_code=303)
 
 
 def _notes_tree(rows: list) -> dict:
@@ -683,8 +683,8 @@ def _notes_tree(rows: list) -> dict:
     return root
 
 
-@app.get("/notes/{item_id}", response_class=HTMLResponse)
-def notes_view(request: Request, item_id: int, note: int | None = None):
+@app.get("/library/{item_id}", response_class=HTMLResponse)
+def library_view(request: Request, item_id: int, note: int | None = None):
     """笔记库浏览页：左侧目录 / 中间内容 / 右侧批注。"""
     conn = _conn()
     try:
@@ -692,17 +692,17 @@ def notes_view(request: Request, item_id: int, note: int | None = None):
         if not item:
             raise HTTPException(404)
         toc = conn.execute(
-            "SELECT id, path FROM notes WHERE item_id=? ORDER BY ord", (item_id,)).fetchall()
+            "SELECT id, path FROM note_files WHERE item_id=? ORDER BY ord", (item_id,)).fetchall()
         if not toc:
             raise HTTPException(404, "该条目不是笔记库")
         cur = None
         if note is not None:
             cur = conn.execute(
-                "SELECT * FROM notes WHERE id=? AND item_id=?", (note, item_id)).fetchone()
+                "SELECT * FROM note_files WHERE id=? AND item_id=?", (note, item_id)).fetchone()
         if cur is None:
             cur = conn.execute(
-                "SELECT * FROM notes WHERE item_id=? ORDER BY ord LIMIT 1", (item_id,)).fetchone()
-        return render("notes.html", ctx(
+                "SELECT * FROM note_files WHERE item_id=? ORDER BY ord LIMIT 1", (item_id,)).fetchone()
+        return render("library.html", ctx(
             request, item=dict(item), tree=_notes_tree(toc), file_count=len(toc),
             current=dict(cur), content_html=render_md(cur["content"])))
     finally:
@@ -796,6 +796,169 @@ def stats_page(request: Request, _: str = Depends(require_admin)):
         conn.close()
 
 
+# ---------- 浮动 AI 笔记助手 ----------
+NOTE_SYSTEM = """你是「AI 技术雷达」的学习笔记助手。基于给定上下文，输出一篇结构化 Markdown 学习笔记，结构必须为：
+
+# <简洁标题>
+> 来源：<URL>（如有）
+
+## TL;DR
+（一句话总结）
+
+## 核心要点
+（3-6 条要点列表）
+
+## 详细笔记
+（基于上下文展开，白话但技术准确，可用小标题/代码块）
+
+## 延伸问题
+（2-3 个值得继续探究的问题）
+
+规则：只基于提供的上下文写作，上下文没有的信息不要编造（确需提及标注「待核实」）；全文中文，专有名词保留英文；直接输出 Markdown，不要代码围栏包裹。"""
+
+NOTE_ROLE_LABELS = {"explainer": "精讲模型", "scorer": "粗筛模型", "fallback": "兜底模型"}
+
+
+@app.get("/api/models")
+def api_models():
+    """浮动助手的模型下拉（公开，只暴露角色与模型名，不含密钥）。"""
+    out = []
+    for role in ("explainer", "scorer", "fallback"):
+        cfg = resolve_role(role)
+        out.append({"role": role, "label": NOTE_ROLE_LABELS[role],
+                    "model": cfg.model, "provider": cfg.provider})
+    return {"models": out}
+
+
+@app.post("/api/note")
+async def api_note(request: Request, _: str = Depends(require_admin)):
+    """生成结构化 Markdown 笔记并保存。"""
+    try:
+        data = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "需要 JSON body")
+    role = data.get("role") or "explainer"
+    if role not in ROLES:
+        raise HTTPException(400, "未知模型角色")
+    instruction = (data.get("instruction") or "").strip()[:500]
+    selection = (data.get("selection") or "").strip()[:8000]
+    page = data.get("page") or {}
+    title = (page.get("title") or "")[:200]
+    url = (page.get("url") or "")[:500]
+    item_id = page.get("item_id")
+    parts = [f"页面标题: {title}", f"页面链接: {url}"]
+    if item_id:
+        conn = _conn()
+        try:
+            item = conn.execute("SELECT * FROM items WHERE id=?", (int(item_id),)).fetchone()
+            if item:
+                parts.append(f"条目: {item['title']}\n原始链接: {item['url']}\n简介: {item['summary'] or ''}")
+                exp = get_explanation(conn, int(item_id))
+                if exp:
+                    parts.append("已有讲解: " + json.dumps(exp["content"], ensure_ascii=False))
+                mat = conn.execute(
+                    "SELECT content FROM materials WHERE item_id=?", (int(item_id),)
+                ).fetchone()
+                if mat:
+                    parts.append("原始材料(节选):\n" + mat["content"][:15000])
+        finally:
+            conn.close()
+    if selection:
+        parts.append(f"用户选中的内容:\n{selection}")
+    if instruction:
+        parts.append(f"用户补充要求: {instruction}")
+    from app.llm.router import RoutedLLM
+    try:
+        resp = RoutedLLM(role).complete(
+            NOTE_SYSTEM, "\n\n".join(parts) + "\n\n请输出 Markdown 学习笔记。",
+            max_tokens=2000)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:300]}
+    md_text = resp.text.strip()
+    fence = re.match(r"^```(?:markdown)?\s*(.*?)```\s*$", md_text, re.S)
+    if fence:
+        md_text = fence.group(1).strip()
+    note_title = title or "未命名笔记"
+    m = re.match(r"^#\s+(.+)", md_text)
+    if m:
+        note_title = m.group(1).strip()[:120]
+    conn = _conn()
+    try:
+        cur = conn.execute(
+            """INSERT INTO notes(title, source_url, item_id, content_md, model, created_at)
+               VALUES (?,?,?,?,?,?)""",
+            (note_title, url, item_id, md_text, resp.model, now_iso()))
+        conn.commit()
+        note_id = cur.lastrowid
+    finally:
+        conn.close()
+    return {"ok": True, "id": note_id, "title": note_title,
+            "markdown": md_text, "html": render_md(md_text), "model": resp.model}
+
+
+@app.get("/notes", response_class=HTMLResponse)
+def notes_list(request: Request, _: str = Depends(require_admin)):
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, title, source_url, model, created_at FROM notes ORDER BY id DESC LIMIT 200"
+        ).fetchall()
+        return render("notes.html", ctx(request, notes=rows))
+    finally:
+        conn.close()
+
+
+@app.get("/notes/export.md")
+def notes_export(_: str = Depends(require_admin)):
+    conn = _conn()
+    try:
+        rows = conn.execute("SELECT * FROM notes ORDER BY id").fetchall()
+        parts = [f"<!-- 笔记 #{r['id']} · {r['created_at']} · {r['model']} -->\n\n{r['content_md']}"
+                 for r in rows]
+        body = "\n\n---\n\n".join(parts) or "# 暂无笔记"
+        return Response(content=body, media_type="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="notes-export.md"'})
+    finally:
+        conn.close()
+
+
+@app.get("/notes/{note_id}.md")
+def note_download(note_id: int, _: str = Depends(require_admin)):
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()
+        if not row:
+            raise HTTPException(404)
+        return Response(content=row["content_md"], media_type="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="note-{note_id}.md"'})
+    finally:
+        conn.close()
+
+
+@app.get("/notes/{note_id}", response_class=HTMLResponse)
+def note_view(request: Request, note_id: int, _: str = Depends(require_admin)):
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()
+        if not row:
+            return render("404.html", ctx(request), status_code=404)
+        return render("note_view.html", ctx(
+            request, note=row, content=render_md(row["content_md"])))
+    finally:
+        conn.close()
+
+
+@app.post("/notes/{note_id}/delete")
+def note_delete(note_id: int, _: str = Depends(require_admin)):
+    conn = _conn()
+    try:
+        conn.execute("DELETE FROM notes WHERE id=?", (note_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    return RedirectResponse("/notes", status_code=303)
+
+
 def _x(text: str) -> str:
     return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -805,3 +968,8 @@ def _rfc822(d: str) -> str:
         return datetime.fromisoformat(d).strftime("%a, %d %b %Y 08:00:00 +0800")
     except (ValueError, TypeError):
         return ""
+
+
+# 八股复习系统路由（置于文件末尾以避免循环导入）
+from app.web.quiz import router as quiz_router  # noqa: E402
+app.include_router(quiz_router)
