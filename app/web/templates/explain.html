@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}讲解任意仓库 · {{ site_title }}{% endblock %}
+{% block content %}
+<article class="detail">
+  <h1>讲解任意 GitHub 仓库</h1>
+  <p class="muted">粘贴一个 GitHub 仓库地址，调用讲解引擎现场生成一份结构化深度讲解（会消耗 LLM 额度，需管理员）。生成后自动跳转到讲解详情页。生成的讲解会永久保存在 <a href="/explanations">📚 讲解库</a> 里。</p>
+  {% if error %}<div class="flash-err">✗ {{ error }}</div>{% endif %}
+  <form method="post" action="/explain">
+    <div class="form-row">
+      <label>GitHub 地址
+        <input name="url" required autofocus
+               placeholder="https://github.com/owner/repo（也支持 owner/repo、.git 结尾）">
+      </label>
+    </div>
+    <div class="btn-group">
+      <button type="submit" class="btn-primary">⚡ 生成 AI 讲解</button>
+      <button type="submit" formaction="/import-notes" class="btn-secondary">📒 导入为笔记库</button>
+    </div>
+    <p class="muted">支持形式：<code>https://github.com/owner/repo</code> · <code>owner/repo</code> · <code>git@github.com:owner/repo.git</code></p>
+    <p class="muted"><strong>两种模式怎么选：</strong></p>
+    <ul class="muted" style="margin-top:0">
+      <li><strong>生成 AI 讲解</strong>：适合「工具/框架/项目」类仓库，由 AI 读 README 生成结构化讲解，存入 <a href="/explanations">讲解库</a>。</li>
+      <li><strong>导入为笔记库</strong>：适合「知识笔记/面试题合集」类仓库（很多 .md 文件），抓取全部 markdown 按<strong>左侧目录 + 中间内容 + 右侧批注</strong>浏览，不调用 AI。</li>
+    </ul>
+    <p class="muted">首次提交会弹出管理员登录（用户名 {{ admin_username }}）。</p>
+  </form>
+</article>
+{% endblock %}

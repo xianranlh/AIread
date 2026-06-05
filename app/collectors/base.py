@@ -12,8 +12,10 @@ UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
 
 
 def http_client(**kw) -> httpx.Client:
+    # 把调用方自定义的 headers 与默认 UA 合并，避免与下面的 headers= 形成重复关键字
+    headers = {"User-Agent": UA, **(kw.pop("headers", None) or {})}
     return httpx.Client(
-        headers={"User-Agent": UA},
+        headers=headers,
         timeout=httpx.Timeout(20, connect=10),
         follow_redirects=True,
         **kw,

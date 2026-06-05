@@ -57,9 +57,16 @@ class OpenAICompatClient(LLMClient):
                 {"role": "user", "content": user},
             ],
         )
-        usage = resp.usage
+        # 某些 OpenAI 兼容中转网关返回的不是标准 ChatCompletion 结构，
+        # openai SDK 在无法解析时会把原始 body 当作字符串直接返回。
+        if not getattr(resp, "choices", None):
+            raise RuntimeError(
+                f"网关返回了非标准 OpenAI 响应（缺少 choices）：{str(resp)[:300]}"
+            )
+        msg = resp.choices[0].message
+        usage = getattr(resp, "usage", None)
         return LLMResponse(
-            text=resp.choices[0].message.content or "",
+            text=(getattr(msg, "content", "") or ""),
             tokens_in=getattr(usage, "prompt_tokens", 0) or 0,
             tokens_out=getattr(usage, "completion_tokens", 0) or 0,
             model=self.model,

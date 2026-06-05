@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Agent 学习指南 · {{ site_title }}{% endblock %}
+{% block content %}
+<article class="detail">
+  <div class="prose">
+    {{ guide_html | safe }}
+  </div>
+</article>
+{% endblock %}

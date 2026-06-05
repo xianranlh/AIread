@@ -37,6 +37,7 @@ def score_pending(conn: sqlite3.Connection, run_date: str) -> dict:
         (run_date,),
     ).fetchall()
     stats = {"scored": 0, "kept": 0, "failed": 0}
+    failed_ids: set[int] = set()  # LLM 调用失败的批次，保留 raw 供下次重试，勿误丢
     for i in range(0, len(rows), s.score_batch_size):
         batch = rows[i:i + s.score_batch_size]
         lines = []
@@ -55,6 +56,7 @@ def score_pending(conn: sqlite3.Connection, run_date: str) -> dict:
         except Exception:  # noqa: BLE001
             log.exception("打分批次失败，该批跳过")
             stats["failed"] += len(batch)
+            failed_ids.update(r["id"] for r in batch)
             continue
         valid_ids = {r["id"] for r in batch}
         for raw in results if isinstance(results, list) else []:
@@ -84,11 +86,16 @@ def score_pending(conn: sqlite3.Connection, run_date: str) -> dict:
             stats["scored"] += 1
             stats["kept"] += int(keep)
         conn.commit()
-    # 漏掉没打上分的（模型偶尔漏条目）标记为低优先级保留
-    conn.execute(
-        "UPDATE items SET status='dropped', drop_reason='打分缺失' WHERE run_date=? AND status='raw'",
-        (run_date,),
-    )
+    # 模型成功返回但偶尔漏掉的条目 → 标记低优先级丢弃；
+    # 但「LLM 调用失败」批次里的条目保留 raw，下次运行可重试（避免整批永久丢失）。
+    placeholders = ",".join("?" * len(failed_ids))
+    sql = ("UPDATE items SET status='dropped', drop_reason='打分缺失' "
+           "WHERE run_date=? AND status='raw'")
+    params: list = [run_date]
+    if failed_ids:
+        sql += f" AND id NOT IN ({placeholders})"
+        params.extend(failed_ids)
+    conn.execute(sql, params)
     conn.commit()
     return stats
 

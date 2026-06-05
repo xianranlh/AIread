@@ -54,7 +54,10 @@ nav a:hover { color: var(--accent); text-decoration: none; }
 .card {
   background: var(--card); border: 1px solid var(--border);
   border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
+  overflow-wrap: anywhere; word-break: break-word; min-width: 0;
 }
+/* 长 URL / 无空格长串不再撑破卡片与正文 */
+.card a, .prose, .prose a, .one-liner, .reason { overflow-wrap: anywhere; word-break: break-word; }
 .card-deep { border-left: 3px solid var(--accent); }
 .card-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .badge { font-size: 12px; border-radius: 6px; padding: 1px 8px; }
@@ -73,7 +76,7 @@ nav a:hover { color: var(--accent); text-decoration: none; }
 .more { margin-left: auto; font-size: 14px; font-weight: 500; }
 
 /* detail */
-.detail { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px 32px; margin: 24px 0; }
+.detail { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px 32px; margin: 24px 0; position: relative; }
 .detail h1 { font-size: 26px; line-height: 1.4; margin: 10px 0; }
 .detail h2 { font-size: 18px; margin: 26px 0 8px; padding-top: 8px; }
 .one-liner-big {
@@ -103,20 +106,28 @@ nav a:hover { color: var(--accent); text-decoration: none; }
 .settings-group legend { font-weight: 600; padding: 0 8px; }
 .form-row { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin: 10px 0; }
 .form-row label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; flex: 1; min-width: 220px; }
-.form-row input, .form-row select {
+.form-row input, .form-row select, .form-row textarea {
   background: var(--bg); border: 1px solid var(--border); color: var(--fg);
   border-radius: 8px; padding: 8px 10px; font-size: 14px;
 }
+.form-row textarea { width: 100%; font-family: inherit; line-height: 1.5; resize: vertical; }
 .btn-primary, .btn-test {
   background: var(--accent); color: #fff; border: 0; border-radius: 8px;
   padding: 9px 18px; font-size: 14px; cursor: pointer;
 }
 .btn-test { background: var(--chip); color: var(--fg); }
 .btn-test:hover, .btn-primary:hover { opacity: .85; }
+.btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0; }
+.btn-secondary {
+  background: var(--chip); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 9px 18px; font-size: 14px; cursor: pointer;
+}
+.btn-secondary:hover { opacity: .85; }
 .test-result { font-size: 13px; }
 .test-result.ok { color: #15803d; }
 .test-result.err { color: #b91c1c; }
 .flash-ok { background: var(--accent-soft); color: var(--accent); border-radius: 8px; padding: 8px 14px; margin: 10px 0; }
+.flash-err { background: #fdecec; color: #c0392b; border-radius: 8px; padding: 8px 14px; margin: 10px 0; }
 
 @media (max-width: 600px) {
   .detail { padding: 20px 16px; }
@@ -148,4 +159,86 @@ nav a:hover { color: var(--accent); text-decoration: none; }
   .cat-bar { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 8px; }
   .chip { white-space: nowrap; }
   .bar-label, .bar-num { width: 70px; }
+}
+
+/* ---------- 讲解页：朗读 / 批注 ---------- */
+.doc-tip { font-size: 13px; margin: 4px 0 10px; }
+.doc-main { min-width: 0; }
+/* 批注栏定位在卡片右外侧（卡片外），不占正文宽度 */
+.notes-rail { position: absolute; top: 28px; left: calc(100% + 20px); width: 250px; }
+mark.annot { background: #fff3bf; border-bottom: 2px solid #f1c40f; border-radius: 2px; cursor: context-menu; padding: 0 1px; }
+mark.annot.annot-hover { background: #ffe08a; }
+.note-card {
+  width: 240px; background: var(--card); border: 1px solid var(--border);
+  border-left: 3px solid #f1c40f; border-radius: 8px; padding: 8px 10px;
+  font-size: 13px; box-shadow: 0 1px 4px rgba(0,0,0,.06); transition: top .12s ease;
+}
+.note-body { white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+.note-actions { margin-top: 6px; display: flex; gap: 10px; }
+.note-actions button { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0; }
+.note-actions button:hover { color: var(--accent); }
+.ctx-menu {
+  position: fixed; z-index: 1000; background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.15); padding: 4px; min-width: 120px;
+}
+.ctx-menu button {
+  display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--fg);
+  padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 14px;
+}
+.ctx-menu button:hover { background: var(--chip); }
+.annot-editor {
+  position: fixed; z-index: 1001; width: 320px; background: var(--card);
+  border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.2); padding: 12px;
+}
+.annot-editor textarea {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+  border-radius: 8px; padding: 8px; font: inherit; font-size: 14px; resize: vertical; box-sizing: border-box;
+}
+.annot-editor-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.annot-editor-foot .annot-quote { font-size: 12px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.annot-editor-foot button { border: 0; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.annot-editor-foot #annot-cancel { background: var(--chip); color: var(--fg); }
+.trans-popup {
+  position: fixed; z-index: 1002; max-width: 320px; background: var(--card);
+  border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 10px 12px; font-size: 14px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+}
+/* 屏幕不够宽放不下右侧栏时，批注改为卡片下方堆叠 */
+@media (max-width: 1300px) {
+  .notes-rail { position: static; width: 100%; margin-top: 16px; }
+  .note-card { position: static !important; top: auto !important; width: 100%; margin-bottom: 8px; }
+}
+.note-card { width: 250px; }
+
+/* ---------- 笔记库（左目录 / 中内容 / 右批注）---------- */
+.container:has(.notes-page) { max-width: 98vw; }
+.notes-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 18px 0 6px; }
+.notes-title h1 { margin: 0; font-size: 24px; }
+.notes-count { font-size: 13px; }
+.notes-desc { margin: 0 0 14px; font-size: 14px; }
+.notes-page { display: flex; gap: 20px; align-items: flex-start; }
+.toc-rail { width: fit-content; min-width: 180px; max-width: 360px; flex: 0 0 auto; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+.toc-head { font-weight: 600; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.toc-origin { font-size: 12px; font-weight: 400; white-space: nowrap; }
+.toc-meta { font-size: 12px; margin: 2px 0 10px; }
+.toc-tree, .toc-sub { list-style: none; margin: 0; padding: 0; }
+.toc-sub { padding-left: 12px; border-left: 1px solid var(--border); margin-left: 6px; }
+.toc-dir > details > summary { cursor: pointer; padding: 4px 6px; border-radius: 6px; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toc-dir > details > summary:hover { background: var(--chip); }
+.toc-file { font-size: 13px; line-height: 1.45; }
+.toc-file a { display: block; padding: 4px 6px; border-radius: 6px; color: var(--fg); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toc-file a:hover { background: var(--chip); }
+.toc-file.toc-active a { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.notes-content { flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px 32px; position: relative; }
+.notes-content .prose { font-size: 16px; line-height: 1.7; }
+.notes-path { font-size: 12px; margin-bottom: 2px; word-break: break-all; }
+.notes-page > .notes-rail { position: relative; top: auto; left: auto; width: 230px; flex-shrink: 0; }
+/* 没有批注时右栏不占空间，正文更宽 */
+.notes-page > .notes-rail:empty { display: none; }
+@media (max-width: 1100px) {
+  .notes-page { flex-direction: column; }
+  .toc-rail { width: 100%; position: static; max-height: 300px; box-sizing: border-box; }
+  .notes-content { width: 100%; box-sizing: border-box; }
+  .notes-page > .notes-rail { width: 100%; }
 }

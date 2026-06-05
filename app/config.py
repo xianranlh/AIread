@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     site_title: str = "AI 技术雷达"
     site_url: str = "http://localhost:8000"  # 用于 RSS/推送的绝对链接
     timezone: str = "Asia/Shanghai"
-    admin_password: str = ""  # 网页设置/统计/问答密码（用户名 admin）；留空则禁用
+    admin_username: str = "admin"  # 网页管理用户名
+    admin_password: str = ""  # 网页设置/统计/问答密码；留空则禁用管理功能
 
     # ---- LLM 供应商（.env 为默认值，网页 /settings 保存的配置优先）----
     # provider: anthropic | openai_compat | mock

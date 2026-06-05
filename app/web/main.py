@@ -1,22 +1,27 @@
 """Web 站点：FastAPI + Jinja2 服务端渲染，直读 SQLite。"""
 import json
+import re
 import secrets
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import markdown as md
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.collectors.base import http_client
 from app.config import get_settings
-from app.db import connect, init_db, get_explanation, search_items
+from app.db import connect, db, init_db, get_explanation, get_setting, now_iso, search_items, set_setting
+from app.explainer.enricher import gather_material
+from app.explainer.generator import explain_item
 from app.explainer.related import find_related
 from app.llm.config import ROLES, mask_key, resolve_role, save_role
 from app.llm.providers import make_client
 from app.models import CATEGORIES
+from app.processors.cleaner import external_id
 
 BASE = Path(__file__).parent
 app = FastAPI(title="AI 技术雷达")
@@ -34,7 +39,8 @@ templates.env.filters["loads"] = lambda s: json.loads(s or "{}")
 
 def ctx(request: Request, **kw) -> dict:
     s = get_settings()
-    return {"request": request, "site_title": s.site_title, "categories": CATEGORIES, **kw}
+    return {"request": request, "site_title": s.site_title, "categories": CATEGORIES,
+            "admin_username": s.admin_username, **kw}
 
 
 def render(name: str, context: dict, status_code: int = 200):
@@ -127,6 +133,8 @@ def item_detail(request: Request, item_id: int):
         row = conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
         if not row:
             return render("404.html", ctx(request), status_code=404)
+        if row["source"] == "notes":  # 笔记库条目 → 跳到笔记库浏览页
+            return RedirectResponse(f"/notes/{item_id}", status_code=307)
         items = _rows_to_items(conn, [row])
         related = find_related(conn, item_id)
         # 同一天内按排序的上一篇/下一篇
@@ -196,6 +204,29 @@ def by_tag(request: Request, name: str, page: int = Query(1, ge=1)):
         return render("listing.html", ctx(
             request, heading=f"标签 · {name}", items=_rows_to_items(conn, rows),
             page=page, base_url=f"/tag/{name}"))
+    finally:
+        conn.close()
+
+
+@app.get("/explanations", response_class=HTMLResponse)
+def explanations_list(request: Request, page: int = Query(1, ge=1)):
+    """讲解库：所有生成过深度讲解的条目（含手动「讲解仓库」），按生成时间倒序，永久可查。"""
+    conn = _conn()
+    try:
+        per, off = 30, (page - 1) * 30
+        rows = conn.execute(
+            """SELECT i.* FROM items i JOIN explanations e ON e.item_id = i.id
+               ORDER BY e.created_at DESC LIMIT ? OFFSET ?""",
+            (per, off),
+        ).fetchall()
+        note_libs = []
+        if page == 1:
+            note_libs = [dict(r) for r in conn.execute(
+                """SELECT id, title, summary, metrics, fetched_at FROM items
+                   WHERE source='notes' ORDER BY id DESC""").fetchall()]
+        return render("listing.html", ctx(
+            request, heading="📚 讲解库（历史讲解）", items=_rows_to_items(conn, rows),
+            page=page, base_url="/explanations", note_libs=note_libs))
     finally:
         conn.close()
 
@@ -286,6 +317,13 @@ def about(request: Request):
         conn.close()
 
 
+@app.get("/learn", response_class=HTMLResponse)
+def learn(request: Request):
+    """AI Agent 学习指南（静态 Markdown 渲染）。"""
+    text = (BASE / "content" / "agent-learning-guide.md").read_text(encoding="utf-8")
+    return render("learn.html", ctx(request, guide_html=render_md(text)))
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
@@ -299,11 +337,91 @@ def require_admin(credentials: HTTPBasicCredentials = Depends(_security)) -> str
     s = get_settings()
     if not s.admin_password:
         raise HTTPException(403, "未设置 ADMIN_PASSWORD，管理功能已禁用（在 .env 中配置后重启）")
-    user_ok = secrets.compare_digest(credentials.username.encode(), b"admin")
+    user_ok = secrets.compare_digest(credentials.username.encode(), s.admin_username.encode())
     pwd_ok = secrets.compare_digest(credentials.password.encode(), s.admin_password.encode())
     if not (user_ok and pwd_ok):
         raise HTTPException(401, "认证失败", headers={"WWW-Authenticate": "Basic"})
     return credentials.username
+
+
+def _parse_github(raw: str) -> str | None:
+    """从各种形式的 GitHub 地址里抠出 owner/repo。"""
+    raw = (raw or "").strip()
+    m = re.search(r"github\.com[/:]([^/\s]+)/([^/\s#?]+)", raw)
+    if m:
+        owner, repo = m.group(1), m.group(2)
+    elif re.fullmatch(r"[^/\s]+/[^/\s]+", raw):
+        owner, repo = raw.split("/", 1)
+    else:
+        return None
+    repo = repo.removesuffix(".git").rstrip("/")
+    return f"{owner}/{repo}" if owner and repo else None
+
+
+@app.get("/explain", response_class=HTMLResponse)
+def explain_form(request: Request):
+    return render("explain.html", ctx(request))
+
+
+@app.post("/explain")
+def explain_url(request: Request, url: str = Form(...),
+                _: str = Depends(require_admin)):
+    """输入 GitHub 仓库地址，调用讲解引擎现场生成一份深度讲解。"""
+    full = _parse_github(url)
+    if not full:
+        return render("explain.html", ctx(
+            request, error="无法识别，请输入形如 https://github.com/owner/repo 的地址"))
+    canon = f"https://github.com/{full}"
+
+    # 尽量拉一次仓库元数据丰富讲解材料；失败则降级为仅用地址
+    title, summary, metrics = full, "", {}
+    try:
+        s = get_settings()
+        headers = {"Accept": "application/vnd.github+json"}
+        if s.github_token:
+            headers["Authorization"] = f"Bearer {s.github_token}"
+        with http_client(headers=headers) as client:
+            r = client.get(f"https://api.github.com/repos/{full}")
+        if r.status_code == 200:
+            d = r.json()
+            title = d.get("full_name") or full
+            summary = d.get("description") or ""
+            metrics = {"stars": d.get("stargazers_count", 0),
+                       "language": d.get("language"),
+                       "topics": (d.get("topics") or [])[:8]}
+        elif r.status_code == 404:
+            return render("explain.html", ctx(
+                request, error=f"GitHub 上找不到仓库：{full}"))
+    except Exception:  # noqa: BLE001
+        pass
+
+    conn = _conn()
+    try:
+        ext = external_id(canon)
+        row = conn.execute("SELECT id FROM items WHERE external_id=?", (ext,)).fetchone()
+        metrics_json = json.dumps(metrics, ensure_ascii=False)
+        if row:
+            item_id = row["id"]
+            conn.execute(
+                "UPDATE items SET title=?, summary=?, metrics=? WHERE id=?",
+                (title, summary, metrics_json, item_id))
+        else:
+            item_id = conn.execute(
+                """INSERT INTO items(external_id, source, title, url, summary, metrics,
+                                     status, run_date, fetched_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (ext, "manual", title, canon, summary, metrics_json,
+                 "raw", date.today().isoformat(), now_iso()),
+            ).lastrowid
+        conn.commit()
+        item = conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
+        material = gather_material(dict(item))
+        if not explain_item(conn, item, material):
+            return render("explain.html", ctx(
+                request, error="讲解生成失败，请稍后重试或检查模型配置（/settings）"))
+        return RedirectResponse(f"/item/{item_id}", status_code=303)
+    finally:
+        conn.close()
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -315,7 +433,13 @@ def settings_page(request: Request, _: str = Depends(require_admin), saved: int 
             "provider": cfg.provider, "model": cfg.model,
             "base_url": cfg.base_url, "key_mask": mask_key(cfg.api_key),
         }
-    return render("settings.html", ctx(request, roles=roles, saved=saved))
+    conn = _conn()
+    try:
+        guidance = get_setting(conn, "explain.guidance") or ""
+    finally:
+        conn.close()
+    return render("settings.html", ctx(request, roles=roles, saved=saved,
+                                       explain_guidance=guidance))
 
 
 @app.post("/settings/save")
@@ -323,6 +447,8 @@ async def settings_save(request: Request, _: str = Depends(require_admin)):
     form = dict(await request.form())
     for role in ROLES:
         save_role(form, role)
+    with db() as conn:  # db() 上下文会自动 commit
+        set_setting(conn, "explain.guidance", (form.get("explain_guidance") or "").strip())
     return RedirectResponse("/settings?saved=1", status_code=303)
 
 
@@ -377,6 +503,210 @@ async def item_ask(item_id: int, request: Request, _: str = Depends(require_admi
         return {"ok": True, "answer_html": render_md(resp.text), "model": resp.model}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:300]}
+
+
+@app.get("/item/{item_id}/annotations")
+def annotations_list(item_id: int, note_id: int | None = None):
+    """批注（公开可读）。笔记库按 note_id（文件）过滤，讲解页取 note_id 为 NULL 的。"""
+    conn = _conn()
+    try:
+        if note_id is not None:
+            rows = conn.execute(
+                "SELECT id, quote, occurrence, note, updated_at FROM annotations "
+                "WHERE item_id=? AND note_id=? ORDER BY id", (item_id, note_id)).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, quote, occurrence, note, updated_at FROM annotations "
+                "WHERE item_id=? AND note_id IS NULL ORDER BY id", (item_id,)).fetchall()
+        return {"ok": True, "annotations": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+@app.post("/item/{item_id}/annotations")
+async def annotations_create(item_id: int, request: Request,
+                             _: str = Depends(require_admin)):
+    data = await request.json()
+    quote = (data.get("quote") or "").strip()
+    note = (data.get("note") or "").strip()
+    occurrence = int(data.get("occurrence") or 0)
+    note_id = data.get("note_id")
+    note_id = int(note_id) if note_id else None
+    if not quote or not note:
+        raise HTTPException(400, "quote 与 note 都不能为空")
+    conn = _conn()
+    try:
+        if not conn.execute("SELECT 1 FROM items WHERE id=?", (item_id,)).fetchone():
+            raise HTTPException(404)
+        ts = now_iso()
+        aid = conn.execute(
+            """INSERT INTO annotations(item_id, note_id, quote, occurrence, note, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (item_id, note_id, quote[:2000], occurrence, note[:4000], ts, ts)).lastrowid
+        conn.commit()
+        return {"ok": True, "id": aid, "quote": quote, "occurrence": occurrence, "note": note}
+    finally:
+        conn.close()
+
+
+@app.post("/item/{item_id}/annotations/{aid}")
+async def annotations_update(item_id: int, aid: int, request: Request,
+                             _: str = Depends(require_admin)):
+    data = await request.json()
+    note = (data.get("note") or "").strip()
+    if not note:
+        raise HTTPException(400, "note 不能为空")
+    conn = _conn()
+    try:
+        cur = conn.execute(
+            "UPDATE annotations SET note=?, updated_at=? WHERE id=? AND item_id=?",
+            (note[:4000], now_iso(), aid, item_id))
+        conn.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404)
+        return {"ok": True, "id": aid, "note": note}
+    finally:
+        conn.close()
+
+
+@app.delete("/item/{item_id}/annotations/{aid}")
+def annotations_delete(item_id: int, aid: int, _: str = Depends(require_admin)):
+    conn = _conn()
+    try:
+        conn.execute("DELETE FROM annotations WHERE id=? AND item_id=?", (aid, item_id))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.post("/translate")
+async def translate(request: Request, _: str = Depends(require_admin)):
+    """专业名词翻译：把选中的英文/术语翻成中文并一句话解释。"""
+    data = await request.json()
+    text = (data.get("text") or "").strip()[:500]
+    if not text:
+        raise HTTPException(400, "text 为空")
+    from app.llm.router import get_scorer
+    system = ("你是面向中文工程师的技术术语翻译助手。把用户给的英文或中英混合的专业名词/短语翻译成中文："
+              "先给中文译名，再用一句话解释它的含义；若本身是中文术语则直接解释其专业含义。"
+              "只输出结果，简洁，不要寒暄或重复原词。")
+    try:
+        resp = get_scorer().complete(system, text, max_tokens=200)
+        return {"ok": True, "text": resp.text.strip(), "model": resp.model}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:200]}
+
+
+@app.post("/import-notes")
+def import_notes(request: Request, url: str = Form(...),
+                 _: str = Depends(require_admin)):
+    """把「知识笔记」类仓库导入为笔记库：抓取所有 .md 文件，按目录浏览（不做 AI 讲解）。"""
+    full = _parse_github(url)
+    if not full:
+        return render("explain.html", ctx(
+            request, error="无法识别，请输入形如 https://github.com/owner/repo 的地址"))
+    s = get_settings()
+    headers = {"Accept": "application/vnd.github+json"}
+    if s.github_token:
+        headers["Authorization"] = f"Bearer {s.github_token}"
+    try:
+        with http_client(headers=headers) as client:
+            meta = client.get(f"https://api.github.com/repos/{full}")
+            if meta.status_code == 404:
+                return render("explain.html", ctx(request, error=f"GitHub 上找不到仓库：{full}"))
+            meta.raise_for_status()
+            branch = meta.json().get("default_branch", "main")
+            desc = meta.json().get("description") or ""
+            tree = client.get(
+                f"https://api.github.com/repos/{full}/git/trees/{branch}?recursive=1")
+            tree.raise_for_status()
+            paths = [b["path"] for b in tree.json().get("tree", [])
+                     if b.get("type") == "blob"
+                     and b["path"].lower().endswith((".md", ".markdown"))
+                     and (b.get("size") or 0) <= 400_000]
+            paths = sorted(paths)[:150]  # 控制规模
+            if not paths:
+                return render("explain.html", ctx(
+                    request, error="该仓库没有可导入的 markdown 文件"))
+            files = []
+            for p in paths:
+                raw = client.get(
+                    f"https://raw.githubusercontent.com/{full}/{branch}/{p}")
+                if raw.status_code == 200 and raw.text.strip():
+                    files.append((p, raw.text))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        return render("explain.html", ctx(request, error=f"导入失败：{str(e)[:200]}"))
+    if not files:
+        return render("explain.html", ctx(request, error="所有文件抓取失败，请稍后重试"))
+
+    canon = f"https://github.com/{full}"
+    conn = _conn()
+    try:
+        ext = external_id(canon)
+        row = conn.execute("SELECT id FROM items WHERE external_id=?", (ext,)).fetchone()
+        metrics_json = json.dumps({"notes": True, "file_count": len(files)}, ensure_ascii=False)
+        if row:
+            item_id = row["id"]
+            conn.execute("UPDATE items SET source='notes', title=?, summary=?, metrics=? WHERE id=?",
+                         (full, desc, metrics_json, item_id))
+            conn.execute("DELETE FROM notes WHERE item_id=?", (item_id,))  # 重新导入则覆盖
+            conn.execute("DELETE FROM explanations WHERE item_id=?", (item_id,))  # 笔记库不保留 AI 讲解
+        else:
+            item_id = conn.execute(
+                """INSERT INTO items(external_id, source, title, url, summary, metrics,
+                                     status, run_date, fetched_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (ext, "notes", full, canon, desc, metrics_json,
+                 "notes", date.today().isoformat(), now_iso())).lastrowid
+        for i, (p, content) in enumerate(files):
+            conn.execute(
+                "INSERT INTO notes(item_id, path, ord, content) VALUES (?,?,?,?)",
+                (item_id, p, i, content))
+        conn.commit()
+    finally:
+        conn.close()
+    return RedirectResponse(f"/notes/{item_id}", status_code=303)
+
+
+def _notes_tree(rows: list) -> dict:
+    """把扁平文件路径列表构建成文件夹树：{dirs: {名: 子节点}, files: [{id, name}]}。"""
+    root: dict = {"dirs": {}, "files": []}
+    for r in rows:
+        parts = r["path"].split("/")
+        node = root
+        for d in parts[:-1]:
+            node = node["dirs"].setdefault(d, {"dirs": {}, "files": []})
+        node["files"].append({"id": r["id"], "name": parts[-1]})
+    return root
+
+
+@app.get("/notes/{item_id}", response_class=HTMLResponse)
+def notes_view(request: Request, item_id: int, note: int | None = None):
+    """笔记库浏览页：左侧目录 / 中间内容 / 右侧批注。"""
+    conn = _conn()
+    try:
+        item = conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
+        if not item:
+            raise HTTPException(404)
+        toc = conn.execute(
+            "SELECT id, path FROM notes WHERE item_id=? ORDER BY ord", (item_id,)).fetchall()
+        if not toc:
+            raise HTTPException(404, "该条目不是笔记库")
+        cur = None
+        if note is not None:
+            cur = conn.execute(
+                "SELECT * FROM notes WHERE id=? AND item_id=?", (note, item_id)).fetchone()
+        if cur is None:
+            cur = conn.execute(
+                "SELECT * FROM notes WHERE item_id=? ORDER BY ord LIMIT 1", (item_id,)).fetchone()
+        return render("notes.html", ctx(
+            request, item=dict(item), tree=_notes_tree(toc), file_count=len(toc),
+            current=dict(cur), content_html=render_md(cur["content"])))
+    finally:
+        conn.close()
 
 
 PRICES = {  # USD / 1M tokens (输入, 输出)，仅供估算

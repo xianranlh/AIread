@@ -14,40 +14,44 @@
 
   {% if item.explanation %}
   {% set e = item.explanation %}
-  <div class="one-liner-big">{{ e.one_liner }}</div>
+  <p class="muted doc-tip">提示：选中文字（或右键单词）可「🌐 翻译 / ✏️ 添加批注」；右键已有批注可编辑或删除。批注显示在卡片右侧。</p>
+  <div class="doc-main" id="doc-main" data-annot-base="/item/{{ item.id }}" data-admin-user="{{ admin_username }}">
+    <div class="one-liner-big">{{ e.one_liner }}</div>
 
-  <h2>它解决什么问题</h2>
-  <div class="prose">{{ e.problem | md | safe }}</div>
+    <h2>它解决什么问题</h2>
+    <div class="prose">{{ e.problem | md | safe }}</div>
 
-  <h2>工作原理</h2>
-  <div class="prose">{{ e.how_it_works | md | safe }}</div>
+    <h2>工作原理</h2>
+    <div class="prose">{{ e.how_it_works | md | safe }}</div>
 
-  {% if e.highlights %}
-  <h2>亮点</h2>
-  <ul class="prose">{% for h in e.highlights %}<li>{{ h }}</li>{% endfor %}</ul>
-  {% endif %}
+    {% if e.highlights %}
+    <h2>亮点</h2>
+    <ul class="prose">{% for h in e.highlights %}<li>{{ h }}</li>{% endfor %}</ul>
+    {% endif %}
 
-  {% if e.getting_started %}
-  <h2>10 分钟上手</h2>
-  <div class="prose">{{ e.getting_started | md | safe }}</div>
-  {% endif %}
+    {% if e.getting_started %}
+    <h2>10 分钟上手</h2>
+    <div class="prose">{{ e.getting_started | md | safe }}</div>
+    {% endif %}
 
-  {% if e.prerequisites %}
-  <h2>前置知识</h2>
-  <ul class="prose">{% for p in e.prerequisites %}<li>{{ p }}</li>{% endfor %}</ul>
-  {% endif %}
+    {% if e.prerequisites %}
+    <h2>前置知识</h2>
+    <ul class="prose">{% for p in e.prerequisites %}<li>{{ p }}</li>{% endfor %}</ul>
+    {% endif %}
 
-  {% if e.related %}
-  <h2>同类对比</h2>
-  <ul class="prose">{% for r in e.related %}<li>{{ r }}</li>{% endfor %}</ul>
-  {% endif %}
+    {% if e.related %}
+    <h2>同类对比</h2>
+    <ul class="prose">{% for r in e.related %}<li>{{ r }}</li>{% endfor %}</ul>
+    {% endif %}
 
-  <h2>怎么看</h2>
-  <div class="prose verdict">{{ e.verdict | md | safe }}</div>
+    <h2>怎么看</h2>
+    <div class="prose verdict">{{ e.verdict | md | safe }}</div>
 
-  {% if e.confidence_notes %}
-  <div class="confidence">⚠️ 不确定性说明：{{ e.confidence_notes }}</div>
-  {% endif %}
+    {% if e.confidence_notes %}
+    <div class="confidence">⚠️ 不确定性说明：{{ e.confidence_notes }}</div>
+    {% endif %}
+  </div>
+  <aside class="notes-rail" id="notes-rail"></aside>
   {% else %}
   <p class="prose">{{ item.summary or "该条目未生成深度讲解。" }}</p>
   {% endif %}
@@ -86,6 +90,7 @@
 {% endif %}
 
 <script>
+var ADMIN_USER = "{{ admin_username }}";
 (function () {
   var pwd = "";
   var btn = document.getElementById("ask-btn");
@@ -93,7 +98,7 @@
   btn.addEventListener("click", function () {
     var q = document.getElementById("ask-q").value.trim();
     if (!q) { return; }
-    if (!pwd) { pwd = window.prompt("管理密码（用户名 admin）") || ""; }
+    if (!pwd) { pwd = window.prompt("管理密码（用户名 " + ADMIN_USER + "）") || ""; }
     if (!pwd) { return; }
     out.textContent = "思考中…（约 10-30 秒）";
     btn.disabled = true;
@@ -101,7 +106,7 @@
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Basic " + btoa("admin:" + pwd)
+        "Authorization": "Basic " + btoa(ADMIN_USER + ":" + pwd)
       },
       body: JSON.stringify({question: q})
     }).then(function (r) {
@@ -117,4 +122,20 @@
   });
 })();
 </script>
+
+{% if item.explanation %}
+<div id="sel-menu" class="ctx-menu" hidden></div>
+<div id="trans-popup" class="trans-popup" hidden></div>
+<div id="annot-editor" class="annot-editor" hidden>
+  <textarea id="annot-text" rows="3" placeholder="写下批注…（仅自己/管理员可编辑）"></textarea>
+  <div class="annot-editor-foot">
+    <span class="muted annot-quote" id="annot-quote"></span>
+    <span class="spacer" style="flex:1"></span>
+    <button type="button" id="annot-cancel">取消</button>
+    <button type="button" id="annot-save" class="btn-primary">保存</button>
+  </div>
+</div>
+
+<script src="/static/annot.js"></script>
+{% endif %}
 {% endblock %}

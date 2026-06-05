@@ -66,9 +66,12 @@ def save_role(form: dict, role: str) -> None:
     from app.db import set_setting
     with db() as conn:
         for f in FIELDS:
-            v = (form.get(f"{role}_{f}") or "").strip()
+            raw = form.get(f"{role}_{f}")
+            if raw is None:
+                continue  # 表单未包含该字段 → 不动已存值（避免部分提交清空配置）
+            v = raw.strip()
             if f == "api_key" and v == "":
-                continue  # 留空不覆盖
+                continue  # api_key 留空 = 不覆盖
             set_setting(conn, f"llm.{role}.{f}", v)
 
 

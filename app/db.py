@@ -65,6 +65,27 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,   -- 如 llm.scorer.provider
   value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS annotations (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id    INTEGER NOT NULL REFERENCES items(id),
+  note_id    INTEGER,              -- 绑定的笔记文件（notes.id）；讲解页为 NULL
+  quote      TEXT NOT NULL,        -- 选中的原文（用于定位高亮）
+  occurrence INTEGER DEFAULT 0,    -- 同段内第几次出现（从0计），消歧
+  note       TEXT NOT NULL,        -- 批注内容
+  created_at TEXT,
+  updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_annotations_item ON annotations(item_id);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER NOT NULL REFERENCES items(id),
+  path    TEXT NOT NULL,        -- 仓库内文件路径，作目录
+  ord     INTEGER DEFAULT 0,    -- 排序
+  content TEXT NOT NULL         -- markdown 原文
+);
+CREATE INDEX IF NOT EXISTS idx_notes_item ON notes(item_id);
 """
 
 FTS_SCHEMA = """
@@ -95,6 +116,10 @@ def init_db(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         # 老版本 SQLite 不支持 trigram，搜索会退化为 LIKE
         pass
+    # 轻量迁移：给已存在的 annotations 表补 note_id 列（绑定具体笔记文件；讲解页为 NULL）
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(annotations)")}
+    if cols and "note_id" not in cols:
+        conn.execute("ALTER TABLE annotations ADD COLUMN note_id INTEGER")
     conn.commit()
 
 

@@ -39,6 +39,17 @@
       </div>
     </fieldset>
     {% endfor %}
+
+    <fieldset class="settings-group">
+      <legend>讲解写作偏好（结构 & 偏向，自定义）</legend>
+      <p class="muted">这段文字会追加到讲解提示词后面，<strong>保存即生效</strong>，对之后生成的讲解（含「讲解仓库」手动生成）起作用。可写结构要求与整体偏向，留空则用默认风格。不会改变输出的 JSON 字段，建议把要求落到现有小节里。</p>
+      <div class="form-row">
+        <label>附加写作要求
+          <textarea name="explain_guidance" rows="6" placeholder="例如：&#10;1. 在 how_it_works 末尾附一段最小可运行代码示例（带安装命令）。&#10;2. 在 highlights 里至少有一条点出局限/适用边界。&#10;3. 整体偏向工程落地：多讲怎么集成、生产注意事项与常见踩坑。&#10;4. 语气克制、不吹捧，对被夸大的点主动在 confidence_notes 指出。&#10;5. 面向小白：术语首次出现时用一句话类比解释。">{{ explain_guidance }}</textarea>
+        </label>
+      </div>
+    </fieldset>
+
     <button type="submit" class="btn-primary">保存全部</button>
     <p class="muted">常用 Base URL：DeepSeek <code>https://api.deepseek.com/v1</code> · Qwen <code>https://dashscope.aliyuncs.com/compatible-mode/v1</code> · Kimi <code>https://api.moonshot.cn/v1</code> · 智谱 <code>https://open.bigmodel.cn/api/paas/v4</code> · 本地 Ollama <code>http://宿主机IP:11434/v1</code></p>
     <p class="muted">注意：「测试连接」测试的是<strong>已保存</strong>的配置——改完先点保存再测试。</p>
