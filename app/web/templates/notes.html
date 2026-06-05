@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}我的笔记 · {{ site_title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>我的笔记</h1>
+  <p class="muted">由浮动 AI 助手生成 · <a href="/notes/export.md">导出全部 (.md)</a></p>
+</div>
+{% if notes %}
+<ul class="archive-list">
+  {% for n in notes %}
+  <li>
+    <a href="/notes/{{ n.id }}">{{ n.title or "未命名笔记" }}</a>
+    <span class="muted">{{ n.created_at[:16].replace("T", " ") }} · {{ n.model }}</span>
+    <span style="margin-left:auto; display:flex; gap:10px;">
+      {% if n.source_url %}<a class="muted" href="{{ n.source_url }}" target="_blank">来源↗</a>{% endif %}
+      <a href="/notes/{{ n.id }}.md">下载</a>
+      <form method="post" action="/notes/{{ n.id }}/delete" style="display:inline"
+            onsubmit="return confirm('删除这条笔记？')">
+        <button type="submit" class="link-btn">删除</button>
+      </form>
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="muted">还没有笔记。在任意页面点击右下角 ✨ 按钮即可生成。</p>
+{% endif %}
+{% endblock %}

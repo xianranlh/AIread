@@ -92,6 +92,18 @@ class MockClient(LLMClient):
             return LLMResponse(text=json.dumps(results, ensure_ascii=False), model=self.model)
         if "周报" in system:
             return LLMResponse(text="## 本周综述（Mock）\n\n这是 Mock 模式生成的占位周报。", model=self.model)
+        if "学习笔记" in system:
+            return LLMResponse(text="# Mock 学习笔记\n\n## TL;DR\n占位笔记，配置真实 Key 后由大模型生成。\n\n## 核心要点\n- 要点一\n- 要点二", model=self.model)
+        if "出题人" in system:
+            qs = [{"question": "Mock 出题：什么是 XX？", "category": "基础",
+                   "answer_md": "- Mock 答案要点一\n- 要点二"},
+                  {"question": "Mock 出题：如何设计 YY 系统？", "category": "场景设计",
+                   "answer_md": "- Mock 设计要点"}]
+            return LLMResponse(text=json.dumps(qs, ensure_ascii=False), model=self.model)
+        if "复盘" in system:
+            return LLMResponse(text="# Mock 复盘笔记\n\n## 今日概况\n占位内容\n\n## 薄弱点\n- 占位", model=self.model)
+        if "八股文讲解" in system:
+            return LLMResponse(text="## AI 详解（Mock）\n\n这里是占位详解，配置真实 Key 后生成。", model=self.model)
         if "连接测试" in user:
             return LLMResponse(text="OK", model=self.model)
         exp = {

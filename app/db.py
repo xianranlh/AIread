@@ -61,6 +61,52 @@ CREATE TABLE IF NOT EXISTS materials (
   created_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS notes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  title      TEXT,
+  source_url TEXT,
+  item_id    INTEGER,
+  content_md TEXT NOT NULL,
+  model      TEXT,
+  created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS quiz_questions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  domain     TEXT NOT NULL,        -- java|python|ai|agent|scene
+  category   TEXT,                 -- 基础|进阶|场景设计
+  question   TEXT NOT NULL,
+  answer_md  TEXT,
+  source     TEXT DEFAULT 'seed',  -- seed|ai
+  starred    INTEGER DEFAULT 0,
+  created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_quiz_domain ON quiz_questions(domain);
+
+CREATE TABLE IF NOT EXISTS quiz_cards (  -- FSRS 卡片状态（每题一卡）
+  question_id    INTEGER PRIMARY KEY REFERENCES quiz_questions(id),
+  state          INTEGER DEFAULT 0,   -- 0New 1Learning 2Review 3Relearning
+  stability      REAL DEFAULT 0,
+  difficulty     REAL DEFAULT 0,
+  due            TEXT,
+  last_review    TEXT,
+  reps           INTEGER DEFAULT 0,
+  lapses         INTEGER DEFAULT 0,
+  scheduled_days REAL DEFAULT 0,
+  elapsed_days   REAL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_quiz_due ON quiz_cards(due);
+
+CREATE TABLE IF NOT EXISTS quiz_reviews (  -- 复习日志（进度/复盘/时间轴）
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  question_id  INTEGER REFERENCES quiz_questions(id),
+  rating       INTEGER,             -- 1忘了 2困难 3记得 4简单
+  state_before INTEGER,
+  due_after    TEXT,
+  reviewed_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_quiz_reviews_at ON quiz_reviews(reviewed_at);
+
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,   -- 如 llm.scorer.provider
   value TEXT

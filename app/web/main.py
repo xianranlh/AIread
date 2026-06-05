@@ -1,5 +1,6 @@
 """Web 站点：FastAPI + Jinja2 服务端渲染，直读 SQLite。"""
 import json
+import re
 import secrets
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
-from app.db import connect, init_db, get_explanation, search_items
+from app.db import connect, init_db, get_explanation, now_iso, search_items
 from app.explainer.related import find_related
 from app.llm.config import ROLES, mask_key, resolve_role, save_role
 from app.llm.providers import make_client
@@ -466,6 +467,169 @@ def stats_page(request: Request, _: str = Depends(require_admin)):
         conn.close()
 
 
+# ---------- 浮动 AI 笔记助手 ----------
+NOTE_SYSTEM = """你是「AI 技术雷达」的学习笔记助手。基于给定上下文，输出一篇结构化 Markdown 学习笔记，结构必须为：
+
+# <简洁标题>
+> 来源：<URL>（如有）
+
+## TL;DR
+（一句话总结）
+
+## 核心要点
+（3-6 条要点列表）
+
+## 详细笔记
+（基于上下文展开，白话但技术准确，可用小标题/代码块）
+
+## 延伸问题
+（2-3 个值得继续探究的问题）
+
+规则：只基于提供的上下文写作，上下文没有的信息不要编造（确需提及标注「待核实」）；全文中文，专有名词保留英文；直接输出 Markdown，不要代码围栏包裹。"""
+
+NOTE_ROLE_LABELS = {"explainer": "精讲模型", "scorer": "粗筛模型", "fallback": "兜底模型"}
+
+
+@app.get("/api/models")
+def api_models():
+    """浮动助手的模型下拉（公开，只暴露角色与模型名，不含密钥）。"""
+    out = []
+    for role in ("explainer", "scorer", "fallback"):
+        cfg = resolve_role(role)
+        out.append({"role": role, "label": NOTE_ROLE_LABELS[role],
+                    "model": cfg.model, "provider": cfg.provider})
+    return {"models": out}
+
+
+@app.post("/api/note")
+async def api_note(request: Request, _: str = Depends(require_admin)):
+    """生成结构化 Markdown 笔记并保存。"""
+    try:
+        data = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "需要 JSON body")
+    role = data.get("role") or "explainer"
+    if role not in ROLES:
+        raise HTTPException(400, "未知模型角色")
+    instruction = (data.get("instruction") or "").strip()[:500]
+    selection = (data.get("selection") or "").strip()[:8000]
+    page = data.get("page") or {}
+    title = (page.get("title") or "")[:200]
+    url = (page.get("url") or "")[:500]
+    item_id = page.get("item_id")
+    parts = [f"页面标题: {title}", f"页面链接: {url}"]
+    if item_id:
+        conn = _conn()
+        try:
+            item = conn.execute("SELECT * FROM items WHERE id=?", (int(item_id),)).fetchone()
+            if item:
+                parts.append(f"条目: {item['title']}\n原始链接: {item['url']}\n简介: {item['summary'] or ''}")
+                exp = get_explanation(conn, int(item_id))
+                if exp:
+                    parts.append("已有讲解: " + json.dumps(exp["content"], ensure_ascii=False))
+                mat = conn.execute(
+                    "SELECT content FROM materials WHERE item_id=?", (int(item_id),)
+                ).fetchone()
+                if mat:
+                    parts.append("原始材料(节选):\n" + mat["content"][:15000])
+        finally:
+            conn.close()
+    if selection:
+        parts.append(f"用户选中的内容:\n{selection}")
+    if instruction:
+        parts.append(f"用户补充要求: {instruction}")
+    from app.llm.router import RoutedLLM
+    try:
+        resp = RoutedLLM(role).complete(
+            NOTE_SYSTEM, "\n\n".join(parts) + "\n\n请输出 Markdown 学习笔记。",
+            max_tokens=2000)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:300]}
+    md_text = resp.text.strip()
+    fence = re.match(r"^```(?:markdown)?\s*(.*?)```\s*$", md_text, re.S)
+    if fence:
+        md_text = fence.group(1).strip()
+    note_title = title or "未命名笔记"
+    m = re.match(r"^#\s+(.+)", md_text)
+    if m:
+        note_title = m.group(1).strip()[:120]
+    conn = _conn()
+    try:
+        cur = conn.execute(
+            """INSERT INTO notes(title, source_url, item_id, content_md, model, created_at)
+               VALUES (?,?,?,?,?,?)""",
+            (note_title, url, item_id, md_text, resp.model, now_iso()))
+        conn.commit()
+        note_id = cur.lastrowid
+    finally:
+        conn.close()
+    return {"ok": True, "id": note_id, "title": note_title,
+            "markdown": md_text, "html": render_md(md_text), "model": resp.model}
+
+
+@app.get("/notes", response_class=HTMLResponse)
+def notes_list(request: Request, _: str = Depends(require_admin)):
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, title, source_url, model, created_at FROM notes ORDER BY id DESC LIMIT 200"
+        ).fetchall()
+        return render("notes.html", ctx(request, notes=rows))
+    finally:
+        conn.close()
+
+
+@app.get("/notes/export.md")
+def notes_export(_: str = Depends(require_admin)):
+    conn = _conn()
+    try:
+        rows = conn.execute("SELECT * FROM notes ORDER BY id").fetchall()
+        parts = [f"<!-- 笔记 #{r['id']} · {r['created_at']} · {r['model']} -->\n\n{r['content_md']}"
+                 for r in rows]
+        body = "\n\n---\n\n".join(parts) or "# 暂无笔记"
+        return Response(content=body, media_type="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="notes-export.md"'})
+    finally:
+        conn.close()
+
+
+@app.get("/notes/{note_id}.md")
+def note_download(note_id: int, _: str = Depends(require_admin)):
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()
+        if not row:
+            raise HTTPException(404)
+        return Response(content=row["content_md"], media_type="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="note-{note_id}.md"'})
+    finally:
+        conn.close()
+
+
+@app.get("/notes/{note_id}", response_class=HTMLResponse)
+def note_view(request: Request, note_id: int, _: str = Depends(require_admin)):
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()
+        if not row:
+            return render("404.html", ctx(request), status_code=404)
+        return render("note_view.html", ctx(
+            request, note=row, content=render_md(row["content_md"])))
+    finally:
+        conn.close()
+
+
+@app.post("/notes/{note_id}/delete")
+def note_delete(note_id: int, _: str = Depends(require_admin)):
+    conn = _conn()
+    try:
+        conn.execute("DELETE FROM notes WHERE id=?", (note_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    return RedirectResponse("/notes", status_code=303)
+
+
 def _x(text: str) -> str:
     return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -475,3 +639,8 @@ def _rfc822(d: str) -> str:
         return datetime.fromisoformat(d).strftime("%a, %d %b %Y 08:00:00 +0800")
     except (ValueError, TypeError):
         return ""
+
+
+# 八股复习系统路由（置于文件末尾以避免循环导入）
+from app.web.quiz import router as quiz_router  # noqa: E402
+app.include_router(quiz_router)
