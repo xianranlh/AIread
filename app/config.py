@@ -34,10 +34,22 @@ class Settings(BaseSettings):
     arxiv_categories: str = "cs.AI,cs.CL,cs.LG"
     arxiv_max_results: int = 60
     blog_feeds: str = (
-        "https://openai.com/news/rss.xml,"
-        "https://www.anthropic.com/rss.xml,"
-        "https://deepmind.google/blog/rss.xml,"
-        "https://huggingface.co/blog/feed.xml"
+        # —— 官方/前沿（国外）——
+        "https://openai.com/news/rss.xml,"            # OpenAI 官方
+        "https://deepmind.google/blog/rss.xml,"       # Google DeepMind
+        "https://blog.google/technology/ai/rss/,"     # Google AI
+        "https://huggingface.co/blog/feed.xml,"       # Hugging Face
+        "https://www.microsoft.com/en-us/research/feed/,"  # Microsoft Research
+        "https://bair.berkeley.edu/blog/feed.xml,"    # Berkeley BAIR
+        "https://www.technologyreview.com/topic/artificial-intelligence/feed,"  # MIT Tech Review AI
+        # —— Claude/前沿深度追踪（Anthropic 无官方 RSS，由这些高质量源覆盖）——
+        "https://simonwillison.net/atom/everything/," # Simon Willison（逐条解读 Claude/LLM）
+        "https://www.latent.space/feed,"              # Latent Space
+        "https://importai.substack.com/feed,"         # Import AI（Jack Clark）
+        "https://magazine.sebastianraschka.com/feed," # Ahead of AI
+        # —— 国内 ——
+        "https://www.qbitai.com/feed,"                # 量子位
+        "https://www.infoq.cn/feed"                   # InfoQ 中文
     )
 
     # ---- 处理 ----
