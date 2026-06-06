@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import unquote
 
 SRC_ROOT = Path("/root/JavaGuide-2026年3月24日")
 DB = Path("/root/AIread/data/radar.db")
@@ -25,9 +26,10 @@ sha1 = lambda s: hashlib.sha1(s.encode()).hexdigest()       # noqa: E731
 # markdown ![](url) 与 HTML <img src="url">
 MD_IMG = re.compile(r'(!\[[^\]]*\]\()\s*([^)\s]+)([^)]*\))')
 HTML_IMG = re.compile(r'(<img[^>]*\bsrc=")([^"]+)(")', re.I)
+MD_LINK = re.compile(r'(\]\()([^)]+)(\))')  # 链接（图片已先转成 /lib-assets 不会命中）
 
 
-def rewrite(text: str, md_dir: str, slug: str) -> str:
+def rewrite_images(text: str, md_dir: str, slug: str) -> str:
     def fix(url: str) -> str:
         if url.startswith(("http://", "https://", "/lib-assets/", "data:", "//")):
             return url
@@ -36,6 +38,26 @@ def rewrite(text: str, md_dir: str, slug: str) -> str:
     text = MD_IMG.sub(lambda m: m.group(1) + fix(m.group(2)) + m.group(3), text)
     text = HTML_IMG.sub(lambda m: m.group(1) + fix(m.group(2)) + m.group(3), text)
     return text
+
+
+def rewrite_links(text: str, md_dir: str, item_id: int, path2note: dict) -> str:
+    """库内 md→md 相对链接改写成 /library/{item}?note={id}。"""
+    def fix(m):
+        raw = m.group(2).strip()
+        if raw.startswith(("http://", "https://", "/", "#", "mailto:")):
+            return m.group(0)
+        base, sep, anchor = raw.partition("#")
+        if not base.lower().endswith(".md"):
+            return m.group(0)
+        target = posixpath.normpath(posixpath.join(md_dir, unquote(base))).lstrip("/")
+        nid = path2note.get(target)
+        if nid is None:  # 容错：按结尾匹配唯一项
+            cand = [p for p in path2note if p.endswith(target) or p.endswith(unquote(base))]
+            nid = path2note[cand[0]] if len(cand) == 1 else None
+        if nid is None:
+            return m.group(0)
+        return f"{m.group(1)}/library/{item_id}?note={nid}{m.group(3)}"
+    return MD_LINK.sub(fix, text)
 
 
 def import_bundle(conn, folder, slug, title, url):
@@ -76,15 +98,28 @@ def import_bundle(conn, folder, slug, title, url):
                VALUES (?,?,?,?,?,?,?,?,?)""",
             (ext, "library", title, url, summary, metrics, "library",
              date.today().isoformat(), now())).lastrowid
-    # 4) note_files
+    # 4) note_files —— Pass1：先写入（图片已重写），建立 path→note_id 映射
+    path2note: dict[str, int] = {}
+    rows = []  # (note_id, rel, md_dir)
     for i, p in enumerate(mds):
         rel = p.relative_to(root).as_posix()
         md_dir = posixpath.dirname(rel)
-        content = rewrite(p.read_text(encoding="utf-8", errors="replace"), md_dir, slug)
-        conn.execute("INSERT INTO note_files(item_id, path, ord, content) VALUES (?,?,?,?)",
-                     (item_id, rel, i, content))
+        content = rewrite_images(p.read_text(encoding="utf-8", errors="replace"), md_dir, slug)
+        nid = conn.execute(
+            "INSERT INTO note_files(item_id, path, ord, content) VALUES (?,?,?,?)",
+            (item_id, rel, i, content)).lastrowid
+        path2note[rel] = nid
+        rows.append((nid, rel, md_dir))
+    # Pass2：把库内 md→md 链接改写成 /library/{item}?note={id}
+    n_link = 0
+    for nid, rel, md_dir in rows:
+        cur = conn.execute("SELECT content FROM note_files WHERE id=?", (nid,)).fetchone()[0]
+        new = rewrite_links(cur, md_dir, item_id, path2note)
+        if new != cur:
+            conn.execute("UPDATE note_files SET content=? WHERE id=?", (new, nid))
+            n_link += 1
     conn.commit()
-    print(f"✓ {title}: {len(mds)} 篇 md, {n_img} 张图 -> item #{item_id}")
+    print(f"✓ {title}: {len(mds)} 篇 md, {n_img} 张图, {n_link} 篇含内链已改写 -> item #{item_id}")
     return item_id
 
 
