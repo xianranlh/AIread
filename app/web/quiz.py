@@ -21,8 +21,9 @@ def _m():
 
 GEN_SYSTEM = """你是资深技术面试出题人，为「八股文复习题库」出题。
 要求：题目是中文面试高频题，覆盖基础概念与场景设计；答案为要点式 Markdown（列表为主，可含小段代码），准确、精炼、可背诵。
+每题给出 section（章节分组名，用于把同主题的题归到一起，如「集合容器」「JVM 与类加载」），尽量复用我给你的已有章节名。
 严格输出 JSON 数组，不要任何其他文字：
-[{"question": "题目", "category": "基础|进阶|场景设计", "answer_md": "- 要点..."}]"""
+[{"question": "题目", "section": "章节名", "category": "基础|进阶|场景设计", "answer_md": "- 要点..."}]"""
 
 EXPLAIN_SYSTEM = """你是技术面试教练，请对给定的八股文讲解（八股文讲解任务）。
 在参考答案基础上输出更深入的 Markdown 详解：原理展开、常见追问与回答思路、易错点、记忆口诀。
@@ -43,7 +44,7 @@ def _q_payload(conn, qid: int) -> dict:
     return {
         "id": q["id"], "domain": q["domain"],
         "domain_label": quizbank.DOMAINS.get(q["domain"], q["domain"]),
-        "category": q["category"], "question": q["question"],
+        "section": q["section"] or "", "category": q["category"], "question": q["question"],
         "answer_md": q["answer_md"] or "",
         "answer_html": m.render_md(q["answer_md"] or "（暂无参考答案，点「AI 详解」生成）"),
         "starred": bool(q["starred"]), "source": q["source"],
@@ -113,13 +114,12 @@ def quiz_domain(request: Request, domain: str):
     conn = m._conn()
     try:
         quizbank.ensure_seed(conn)
-        rows = conn.execute(
-            """SELECT q.*, c.state, c.due FROM quiz_questions q
-               LEFT JOIN quiz_cards c ON c.question_id=q.id
-               WHERE q.domain=? ORDER BY q.id""", (domain,)).fetchall()
-        return m.render("quiz_list.html", m.ctx(
-            request, heading=f"题库 · {quizbank.DOMAINS[domain]}", rows=rows,
-            domains=quizbank.DOMAINS, state_names=fsrs.STATE_NAMES))
+        groups = quizbank.grouped_questions(conn, domain)
+        total = sum(len(g["questions"]) for g in groups)
+        return m.render("quiz_domain.html", m.ctx(
+            request, domain=domain, domain_label=quizbank.DOMAINS[domain],
+            groups=groups, total=total, domains=quizbank.DOMAINS,
+            state_names=fsrs.STATE_NAMES))
     finally:
         conn.close()
 
@@ -198,7 +198,7 @@ async def _require_admin_async(request: Request):
         user, _, pwd = base64.b64decode(auth[6:]).decode().partition(":")
     except Exception:  # noqa: BLE001
         raise HTTPException(401, "认证失败", headers={"WWW-Authenticate": "Basic"})
-    if not (_secrets.compare_digest(user.encode(), b"admin")
+    if not (_secrets.compare_digest(user.encode(), s.admin_username.encode())
             and _secrets.compare_digest(pwd.encode(), s.admin_password.encode())):
         raise HTTPException(401, "认证失败", headers={"WWW-Authenticate": "Basic"})
 
@@ -314,9 +314,16 @@ async def api_generate(request: Request):
     try:
         existing = [r["question"] for r in conn.execute(
             "SELECT question FROM quiz_questions WHERE domain=?", (domain,)).fetchall()]
+        sections = [r["section"] for r in conn.execute(
+            "SELECT DISTINCT section FROM quiz_questions WHERE domain=? AND section IS NOT NULL "
+            "ORDER BY ord", (domain,)).fetchall()]
+        next_ord = (conn.execute(
+            "SELECT COALESCE(MAX(ord), 0) AS m FROM quiz_questions WHERE domain=?",
+            (domain,)).fetchone()["m"]) + 1
     finally:
         conn.close()
     user = (f"领域：{quizbank.DOMAINS[domain]}\n出 {n} 道新题。\n"
+            f"已有章节（尽量归入这些，不合适再新建）：{', '.join(sections) or '无'}\n"
             f"已有题目（避免重复）：\n" + "\n".join(f"- {q}" for q in existing[:60]))
     try:
         resp = get_explainer().complete(GEN_SYSTEM, user, max_tokens=3000)
@@ -331,7 +338,9 @@ async def api_generate(request: Request):
                 continue
             qid = quizbank.add_question(
                 conn, domain, it.get("category") or "基础",
-                it["question"].strip(), (it.get("answer_md") or "").strip())
+                it["question"].strip(), (it.get("answer_md") or "").strip(),
+                section=(it.get("section") or "AI 扩充").strip(), ord=next_ord)
+            next_ord += 1
             added.append(qid)
     finally:
         conn.close()

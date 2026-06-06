@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ domain_label }} 八股 · {{ site_title }}{% endblock %}
+{% block content %}
+{% set cn = ["一","二","三","四","五","六","七","八","九","十","十一","十二"] %}
+{% set state_label = {0:"新题",1:"学习中",2:"复习",3:"重学"} %}
+<div class="page-head">
+  <h1>📚 {{ domain_label }} 八股</h1>
+  <p class="muted"><a href="/quiz">← 复习概览</a> · 共 {{ groups|length }} 个章节 / {{ total }} 题，由浅入深</p>
+</div>
+
+<div class="qd-switch">
+  {% for k, v in domains.items() %}
+  <a href="/quiz/domain/{{ k }}" class="qd-tab{% if k == domain %} qd-tab-on{% endif %}">{{ v }}</a>
+  {% endfor %}
+</div>
+
+<div class="qd-layout">
+  <nav class="qd-toc">
+    <div class="qd-toc-head">目录</div>
+    <ol class="qd-toc-list">
+      {% for g in groups %}
+      <li><a href="#sec-{{ loop.index }}">{{ cn[loop.index0] }}、{{ g.section }}</a>
+        <span class="muted">{{ g.questions|length }}</span></li>
+      {% endfor %}
+    </ol>
+  </nav>
+
+  <main class="qd-main">
+    {% for g in groups %}
+    <section class="qd-sec" id="sec-{{ loop.index }}">
+      <h2 class="qd-sec-title">{{ cn[loop.index0] }}、{{ g.section }}
+        <span class="muted qd-sec-n">{{ g.questions|length }} 题</span></h2>
+      <ol class="qd-qlist">
+        {% for r in g.questions %}
+        <li class="qd-q">
+          <span class="badge st{{ r.state or 0 }}">{{ state_label[r.state or 0] }}</span>
+          <a class="qd-q-link" href="/quiz/q/{{ r.id }}">{% if r.starred %}⭐ {% endif %}{{ r.question }}</a>
+          <span class="qd-q-meta muted">{{ r.category }}{% if r.due and (r.state or 0) != 0 %} · 下次 {{ r.due[:10] }}{% endif %}</span>
+        </li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% endfor %}
+  </main>
+</div>
+{% endblock %}

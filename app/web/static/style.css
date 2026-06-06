@@ -337,3 +337,37 @@ mark.annot.annot-hover { background: #ffe08a; }
 .qtl-node.r3 .qtl-dot { background: #22c55e; } .qtl-node.r4 .qtl-dot { background: #3b82f6; }
 .qtl-node.ask .qtl-dot { background: var(--accent); }
 @media (max-width: 900px) { .qr-layout { flex-direction: column; } .qr-timeline { width: 100%; position: static; } }
+
+/* ---------- 八股题库：JavaGuide 式章节层级 ---------- */
+.qd-switch { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 18px; }
+.qd-tab { padding: 5px 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);
+  color: var(--fg); text-decoration: none; font-size: 14px; }
+.qd-tab:hover { background: var(--chip); }
+.qd-tab-on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.qd-layout { display: flex; gap: 24px; align-items: flex-start; }
+.qd-toc { width: 220px; flex: 0 0 auto; position: sticky; top: 16px; max-height: calc(100vh - 32px);
+  overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.qd-toc-head { font-weight: 700; margin-bottom: 8px; font-size: 15px; }
+.qd-toc-list { list-style: none; margin: 0; padding: 0; counter-reset: none; }
+.qd-toc-list li { display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+  padding: 3px 0; font-size: 13px; }
+.qd-toc-list a { color: var(--fg); text-decoration: none; }
+.qd-toc-list a:hover { color: var(--accent); }
+.qd-main { flex: 1; min-width: 0; }
+.qd-sec { scroll-margin-top: 16px; margin-bottom: 26px; }
+.qd-sec-title { font-size: 19px; margin: 0 0 10px; padding-bottom: 6px;
+  border-bottom: 2px solid var(--accent); display: flex; align-items: baseline; gap: 10px; }
+.qd-sec-n { font-size: 13px; font-weight: 400; }
+.qd-qlist { list-style: none; margin: 0; padding: 0; counter-reset: qd; }
+.qd-q { counter-increment: qd; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 9px 12px; border-radius: 8px; }
+.qd-q:hover { background: var(--chip); }
+.qd-q + .qd-q { border-top: 1px solid var(--border); }
+.qd-q-link { font-size: 15px; color: var(--fg); text-decoration: none; line-height: 1.5; }
+.qd-q-link::before { content: counter(qd) ". "; color: var(--muted); font-variant-numeric: tabular-nums; }
+.qd-q-link:hover { color: var(--accent); }
+.qd-q-meta { margin-left: auto; font-size: 12px; white-space: nowrap; }
+@media (max-width: 900px) {
+  .qd-layout { flex-direction: column; }
+  .qd-toc { width: 100%; position: static; max-height: none; box-sizing: border-box; }
+}

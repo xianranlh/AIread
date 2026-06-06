@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS notes (
 CREATE TABLE IF NOT EXISTS quiz_questions (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   domain     TEXT NOT NULL,        -- java|python|ai|agent|scene
+  section    TEXT,                 -- 章节分组（如「集合容器」「JVM 与类加载」），JavaGuide 式层级
+  ord        INTEGER DEFAULT 0,    -- 该 domain 内的递进顺序（由浅入深）
   category   TEXT,                 -- 基础|进阶|场景设计
   question   TEXT NOT NULL,
   answer_md  TEXT,
@@ -178,6 +180,13 @@ def init_db(conn: sqlite3.Connection) -> None:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(annotations)")}
     if cols and "note_id" not in cols:
         conn.execute("ALTER TABLE annotations ADD COLUMN note_id INTEGER")
+    # 轻量迁移：给已存在的 quiz_questions 补 section/ord（JavaGuide 式章节分组）
+    qcols = {r["name"] for r in conn.execute("PRAGMA table_info(quiz_questions)")}
+    if qcols:
+        if "section" not in qcols:
+            conn.execute("ALTER TABLE quiz_questions ADD COLUMN section TEXT")
+        if "ord" not in qcols:
+            conn.execute("ALTER TABLE quiz_questions ADD COLUMN ord INTEGER DEFAULT 0")
     conn.commit()
 
 

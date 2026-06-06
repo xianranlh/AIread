@@ -16,17 +16,20 @@ SEED_PATH = Path(__file__).parent / "quiz_seed.json"
 
 
 def ensure_seed(conn: sqlite3.Connection) -> int:
-    """题库为空时导入种子题，并为每题建 FSRS 卡。返回当前题目总数。"""
+    """题库为空时导入种子题，并为每题建 FSRS 卡。返回当前题目总数。
+    已存在题库时，回填缺失的 section/ord（JavaGuide 式章节分组）。"""
     n = conn.execute("SELECT COUNT(*) AS n FROM quiz_questions").fetchone()["n"]
     if n:
+        _sync_seed_meta(conn)
         return n
     data = json.loads(SEED_PATH.read_text(encoding="utf-8"))
     for q in data:
         cur = conn.execute(
-            """INSERT INTO quiz_questions(domain, category, question, answer_md, source, created_at)
-               VALUES (?,?,?,?,?,?)""",
-            (q["domain"], q.get("category", "基础"), q["question"],
-             q.get("answer_md", ""), "seed", now_iso()))
+            """INSERT INTO quiz_questions(domain, section, ord, category, question,
+                                          answer_md, source, created_at)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (q["domain"], q.get("section"), q.get("ord", 0), q.get("category", "基础"),
+             q["question"], q.get("answer_md", ""), "seed", now_iso()))
         conn.execute(
             "INSERT INTO quiz_cards(question_id, state, due) VALUES (?, 0, ?)",
             (cur.lastrowid, now_iso()))
@@ -35,16 +38,54 @@ def ensure_seed(conn: sqlite3.Connection) -> int:
     return len(data)
 
 
+def _sync_seed_meta(conn: sqlite3.Connection) -> None:
+    """把种子文件里的 section/ord 回填到已存在的 seed 题（按 domain+question 匹配，幂等）。"""
+    miss = conn.execute(
+        "SELECT COUNT(*) AS n FROM quiz_questions WHERE source='seed' AND "
+        "(section IS NULL OR section='')").fetchone()["n"]
+    if not miss:
+        return
+    data = json.loads(SEED_PATH.read_text(encoding="utf-8"))
+    for q in data:
+        if not q.get("section"):
+            continue
+        conn.execute(
+            "UPDATE quiz_questions SET section=?, ord=?, category=? "
+            "WHERE source='seed' AND domain=? AND question=?",
+            (q["section"], q.get("ord", 0), q.get("category", "基础"),
+             q["domain"], q["question"]))
+    conn.commit()
+    log.info("已回填 %d 题的章节分组", miss)
+
+
 def add_question(conn, domain: str, category: str, question: str,
-                 answer_md: str, source: str = "ai") -> int:
+                 answer_md: str, source: str = "ai", section: str | None = None,
+                 ord: int = 0) -> int:
     cur = conn.execute(
-        """INSERT INTO quiz_questions(domain, category, question, answer_md, source, created_at)
-           VALUES (?,?,?,?,?,?)""",
-        (domain, category, question, answer_md, source, now_iso()))
+        """INSERT INTO quiz_questions(domain, section, ord, category, question,
+                                      answer_md, source, created_at)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (domain, section, ord, category, question, answer_md, source, now_iso()))
     conn.execute("INSERT INTO quiz_cards(question_id, state, due) VALUES (?, 0, ?)",
                  (cur.lastrowid, now_iso()))
     conn.commit()
     return cur.lastrowid
+
+
+def grouped_questions(conn, domain: str) -> list[dict]:
+    """按 section 分组、ord 递进排序，返回 JavaGuide 式层级结构。
+    [{"section": "集合容器", "questions": [row, ...]}, ...]"""
+    rows = conn.execute(
+        """SELECT q.*, c.state, c.due FROM quiz_questions q
+           LEFT JOIN quiz_cards c ON c.question_id = q.id
+           WHERE q.domain = ? ORDER BY q.ord, q.id""", (domain,)).fetchall()
+    groups: list[dict] = []
+    for r in rows:
+        sec = r["section"] or "其他"
+        if not groups or groups[-1]["section"] != sec:
+            groups.append({"section": sec, "questions": []})
+        groups[-1]["questions"].append(r)
+    return groups
 
 
 def get_card(conn, qid: int) -> dict | None:
