@@ -29,6 +29,15 @@ app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
 
 
+# 笔记库图片等静态资源（存于挂载的数据卷，不打进镜像）
+try:
+    _lib_assets = Path("/data/lib-assets")
+    _lib_assets.mkdir(parents=True, exist_ok=True)
+    app.mount("/lib-assets", StaticFiles(directory=_lib_assets), name="lib-assets")
+except Exception:  # noqa: BLE001 — 非容器环境（如本地测试）无 /data 时跳过
+    pass
+
+
 def render_md(text: str) -> str:
     return md.markdown(text or "", extensions=["fenced_code", "tables"])
 
