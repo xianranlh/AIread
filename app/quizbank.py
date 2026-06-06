@@ -11,7 +11,8 @@ from app.db import now_iso
 log = logging.getLogger(__name__)
 
 DOMAINS = {"java": "Java", "python": "Python", "ai": "AI 基础",
-           "agent": "Agent", "scene": "场景设计"}
+           "agent": "Agent", "mysql": "MySQL", "linux": "Linux",
+           "git": "Git", "scene": "场景设计"}
 SEED_PATH = Path(__file__).parent / "quiz_seed.json"
 
 
@@ -20,42 +21,50 @@ def ensure_seed(conn: sqlite3.Connection) -> int:
     已存在题库时，回填缺失的 section/ord（JavaGuide 式章节分组）。"""
     n = conn.execute("SELECT COUNT(*) AS n FROM quiz_questions").fetchone()["n"]
     if n:
-        _sync_seed_meta(conn)
-        return n
+        _sync_seed(conn)
+        return conn.execute("SELECT COUNT(*) AS n FROM quiz_questions").fetchone()["n"]
     data = json.loads(SEED_PATH.read_text(encoding="utf-8"))
     for q in data:
-        cur = conn.execute(
-            """INSERT INTO quiz_questions(domain, section, ord, category, question,
-                                          answer_md, source, created_at)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (q["domain"], q.get("section"), q.get("ord", 0), q.get("category", "基础"),
-             q["question"], q.get("answer_md", ""), "seed", now_iso()))
-        conn.execute(
-            "INSERT INTO quiz_cards(question_id, state, due) VALUES (?, 0, ?)",
-            (cur.lastrowid, now_iso()))
+        _insert_seed_q(conn, q)
     conn.commit()
     log.info("八股题库种子导入 %d 题", len(data))
     return len(data)
 
 
-def _sync_seed_meta(conn: sqlite3.Connection) -> None:
-    """把种子文件里的 section/ord 回填到已存在的 seed 题（按 domain+question 匹配，幂等）。"""
-    miss = conn.execute(
-        "SELECT COUNT(*) AS n FROM quiz_questions WHERE source='seed' AND "
-        "(section IS NULL OR section='')").fetchone()["n"]
-    if not miss:
-        return
+def _insert_seed_q(conn: sqlite3.Connection, q: dict) -> int:
+    cur = conn.execute(
+        """INSERT INTO quiz_questions(domain, section, ord, category, question,
+                                      answer_md, source, created_at)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (q["domain"], q.get("section"), q.get("ord", 0), q.get("category", "基础"),
+         q["question"], q.get("answer_md", ""), "seed", now_iso()))
+    conn.execute("INSERT INTO quiz_cards(question_id, state, due) VALUES (?, 0, ?)",
+                 (cur.lastrowid, now_iso()))
+    return cur.lastrowid
+
+
+def _sync_seed(conn: sqlite3.Connection) -> None:
+    """让种子文件成为真相源（幂等）：1) 回填已有 seed 题缺失的 section/ord；
+    2) 导入种子文件里新增的题（如新领域 MySQL/Linux/Git），不动用户/AI 题与复习进度。"""
     data = json.loads(SEED_PATH.read_text(encoding="utf-8"))
+    have = {(r["domain"], r["question"]) for r in conn.execute(
+        "SELECT domain, question FROM quiz_questions").fetchall()}
+    added = 0
     for q in data:
-        if not q.get("section"):
-            continue
-        conn.execute(
-            "UPDATE quiz_questions SET section=?, ord=?, category=? "
-            "WHERE source='seed' AND domain=? AND question=?",
-            (q["section"], q.get("ord", 0), q.get("category", "基础"),
-             q["domain"], q["question"]))
+        key = (q["domain"], q["question"])
+        if key in have:  # 已存在 → 回填章节分组（幂等）
+            conn.execute(
+                "UPDATE quiz_questions SET section=?, ord=?, category=? "
+                "WHERE source='seed' AND domain=? AND question=? "
+                "AND (section IS NULL OR section='')",
+                (q.get("section"), q.get("ord", 0), q.get("category", "基础"),
+                 q["domain"], q["question"]))
+        else:            # 新题 → 插入并建卡
+            _insert_seed_q(conn, q)
+            added += 1
     conn.commit()
-    log.info("已回填 %d 题的章节分组", miss)
+    if added:
+        log.info("种子同步：新增 %d 题", added)
 
 
 def add_question(conn, domain: str, category: str, question: str,
