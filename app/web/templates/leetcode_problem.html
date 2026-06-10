@@ -28,6 +28,28 @@
       </div>
     </div>
     <div class="prose">{{ content_html | safe }}</div>
+    {% if card %}
+    <section class="lc-review{% if card.is_due %} lc-review-due{% endif %}">
+      <div class="lc-review-info">
+        <strong>🔁 间隔复习</strong>
+        <span class="chip">{{ card.state_name }}</span>
+        {% if card.is_due %}<span class="lc-due-badge">已到期</span>
+        {% else %}<span class="muted">下次复习：{{ card.due }}</span>{% endif %}
+        {% if card.retrievability %}<span class="muted">记忆保持率 {{ card.retrievability }}</span>{% endif %}
+        <span class="muted">复习 {{ card.reps }} 次{% if card.lapses %} · 忘 {{ card.lapses }} 次{% endif %}</span>
+      </div>
+      <p class="muted">先自己回忆思路和代码，再对照讲义打分（打完自动跳到下一道到期题）：</p>
+      <div class="lc-rate-btns">
+        {% for r, name in rating_names.items() %}
+        <form method="post" action="/leetcode/p/{{ p.id }}/rate">
+          <input type="hidden" name="rating" value="{{ r }}">
+          <button type="submit" class="lc-rate lc-rate-{{ r }}">{{ name }}<small>{{ card.preview[r] }}</small></button>
+        </form>
+        {% endfor %}
+      </div>
+      {% if due_count %}<p class="muted">还有 {{ due_count }} 道题到期待复习 · <a href="/leetcode/review">进入复习队列 →</a></p>{% endif %}
+    </section>
+    {% endif %}
     <div class="pager">
       <span>{% if prev %}<a href="/leetcode/p/{{ prev.id }}">← {{ prev.title }}</a>{% endif %}</span>
       <span>{% if nxt %}<a href="/leetcode/p/{{ nxt.id }}">{{ nxt.title }} →</a>{% endif %}</span>

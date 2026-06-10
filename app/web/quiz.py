@@ -184,23 +184,8 @@ async def api_rate(request: Request, _: str = Depends(lambda: None)):
 
 
 async def _require_admin_async(request: Request):
-    """从 Authorization 头做 Basic 校验（复用 main.require_admin 逻辑）。"""
-    import base64
-    import secrets as _secrets
-    from app.config import get_settings
-    s = get_settings()
-    if not s.admin_password:
-        raise HTTPException(403, "未设置 ADMIN_PASSWORD")
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Basic "):
-        raise HTTPException(401, "认证失败", headers={"WWW-Authenticate": "Basic"})
-    try:
-        user, _, pwd = base64.b64decode(auth[6:]).decode().partition(":")
-    except Exception:  # noqa: BLE001
-        raise HTTPException(401, "认证失败", headers={"WWW-Authenticate": "Basic"})
-    if not (_secrets.compare_digest(user.encode(), s.admin_username.encode())
-            and _secrets.compare_digest(pwd.encode(), s.admin_password.encode())):
-        raise HTTPException(401, "认证失败", headers={"WWW-Authenticate": "Basic"})
+    """已停用 Basic 认证（个人内网部署，全站免登录）。"""
+    return
 
 
 @router.post("/api/quiz/star/{qid}")

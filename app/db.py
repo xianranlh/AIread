@@ -155,6 +155,29 @@ CREATE TABLE IF NOT EXISTS lc_problems (    -- LeetCode Hot 100 题目讲义
   done_at    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_lc_problems_cat ON lc_problems(category, ord);
+
+CREATE TABLE IF NOT EXISTS lc_cards (  -- 刷题 FSRS 卡片（标记掌握后建卡，每题一卡）
+  problem_id     INTEGER PRIMARY KEY REFERENCES lc_problems(id),
+  state          INTEGER DEFAULT 0,   -- 0New 1Learning 2Review 3Relearning
+  stability      REAL DEFAULT 0,
+  difficulty     REAL DEFAULT 0,
+  due            TEXT,
+  last_review    TEXT,
+  reps           INTEGER DEFAULT 0,
+  lapses         INTEGER DEFAULT 0,
+  scheduled_days REAL DEFAULT 0,
+  elapsed_days   REAL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_lc_due ON lc_cards(due);
+
+CREATE TABLE IF NOT EXISTS lc_reviews (  -- 刷题复习日志
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  problem_id   INTEGER REFERENCES lc_problems(id),
+  rating       INTEGER,             -- 1忘了 2困难 3记得 4简单
+  state_before INTEGER,
+  due_after    TEXT,
+  reviewed_at  TEXT
+);
 """
 
 FTS_SCHEMA = """

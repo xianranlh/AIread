@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ site_title }}{% endblock %}</title>
-<link rel="stylesheet" href="/static/style.css?v=20260609">
+<link rel="stylesheet" href="/static/style.css?v=20260610b">
 <link rel="alternate" type="application/rss+xml" title="{{ site_title }}" href="/feed.xml">
 </head>
 <body>
@@ -15,14 +15,19 @@
       <a href="/">今日</a>
       <a href="/archive">归档</a>
       <a href="/weekly">周报</a>
-      <a href="/learn">学习</a>
-      <a href="/explain">生成讲解</a>
       <a href="/explanations">讲解库</a>
       <a href="/quiz">八股</a>
       <a href="/leetcode">刷题</a>
-      <a href="/about">关于</a>
-      <a href="/settings" title="模型设置">设置</a>
-      <a href="/feed.xml" title="RSS">RSS</a>
+      <details class="nav-more">
+        <summary>更多 ▾</summary>
+        <div class="nav-more-menu">
+          <a href="/learn">学习指南</a>
+          <a href="/explain">生成讲解</a>
+          <a href="/about">关于</a>
+          <a href="/settings">设置</a>
+          <a href="/feed.xml">RSS</a>
+        </div>
+      </details>
     </nav>
     <form class="search" action="/search" method="get">
       <input type="search" name="q" placeholder="搜索…" value="{{ search_q or '' }}">
@@ -59,5 +64,10 @@
   </div>
 </div>
 <script src="/static/assistant.js"></script>
+<script>/* 点击其他位置时收起「更多」菜单 */
+document.addEventListener('click', function (e) {
+  var d = document.querySelector('.nav-more');
+  if (d && d.open && !d.contains(e.target)) d.open = false;
+});</script>
 </body>
 </html>

@@ -8,7 +8,9 @@
     <div class="lc-bar"><div class="lc-bar-fill" style="width: {{ (done * 100 / total) | round(1) if total else 0 }}%"></div></div>
     <span>总进度 {{ done }} / {{ total }}</span>
     {% if next_p %}<a class="btn-primary" href="/leetcode/p/{{ next_p.id }}">▶ 继续刷题：{{ next_p.title }}</a>{% endif %}
+    {% if due_count %}<a class="lc-due-btn" href="/leetcode/review">🔁 复习到期 {{ due_count }} 题</a>{% endif %}
   </div>
+  <p class="muted">已掌握的题会进入 FSRS 间隔复习（和八股同一套调度）：到期后回来打分，记得越牢复习间隔越长。</p>
 </div>
 <div class="lc-cats">
   {% for c in cats %}

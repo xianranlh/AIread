@@ -1,14 +1,12 @@
 """Web 站点：FastAPI + Jinja2 服务端渲染，直读 SQLite。"""
 import json
 import re
-import secrets
 from datetime import date, datetime
 from pathlib import Path
 
 import markdown as md
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -338,19 +336,9 @@ def healthz():
     return {"ok": True}
 
 
-# ---------- 管理区（HTTP Basic 认证，用户名 admin）----------
-_security = HTTPBasic()
-
-
-def require_admin(credentials: HTTPBasicCredentials = Depends(_security)) -> str:
-    s = get_settings()
-    if not s.admin_password:
-        raise HTTPException(403, "未设置 ADMIN_PASSWORD，管理功能已禁用（在 .env 中配置后重启）")
-    user_ok = secrets.compare_digest(credentials.username.encode(), s.admin_username.encode())
-    pwd_ok = secrets.compare_digest(credentials.password.encode(), s.admin_password.encode())
-    if not (user_ok and pwd_ok):
-        raise HTTPException(401, "认证失败", headers={"WWW-Authenticate": "Basic"})
-    return credentials.username
+# ---------- 管理区（已停用 Basic 认证：个人内网部署，全站免登录）----------
+def require_admin() -> str:
+    return get_settings().admin_username
 
 
 def _parse_github(raw: str) -> str | None:

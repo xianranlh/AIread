@@ -18,6 +18,7 @@
     <li class="{% if p.done %}lc-done{% endif %}">
       <span class="lc-check">{% if p.done %}✅{% else %}⬜{% endif %}</span>
       <a href="/leetcode/p/{{ p.id }}">{{ p.ord }}. {{ p.title }}</a>
+      {% if p.is_due %}<span class="lc-due-badge">⏰ 待复习</span>{% endif %}
       <span class="lc-diff lc-diff-{{ p.difficulty }}">{{ p.difficulty }}</span>
       <span class="muted">LC {{ p.lc_id }}</span>
     </li>
