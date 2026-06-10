@@ -982,3 +982,7 @@ def _rfc822(d: str) -> str:
 # 八股复习系统路由（置于文件末尾以避免循环导入）
 from app.web.quiz import router as quiz_router  # noqa: E402
 app.include_router(quiz_router)
+
+# LeetCode Hot 100 刷题板块路由
+from app.web.leetcode import router as lc_router  # noqa: E402
+app.include_router(lc_router)

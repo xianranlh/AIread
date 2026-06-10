@@ -105,6 +105,32 @@ nav a:hover { color: var(--accent); text-decoration: none; }
 .empty { text-align: center; padding: 60px 0; }
 .site-footer { color: var(--muted); font-size: 13px; padding: 30px 16px; text-align: center; }
 
+/* leetcode hot 100 */
+.lc-total { display: flex; align-items: center; gap: 14px; margin: 16px 0; flex-wrap: wrap; }
+.lc-bar { flex: 1; min-width: 160px; height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; }
+.lc-bar-sm { height: 6px; }
+.lc-bar-fill { height: 100%; background: #22c55e; border-radius: 5px; }
+.lc-cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin: 20px 0; }
+.lc-cat-card { display: block; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; background: var(--card); text-decoration: none; color: inherit; }
+.lc-cat-card:hover { border-color: #22c55e; }
+.lc-cat-name { font-weight: 600; margin-bottom: 8px; }
+.lc-cat-stat { font-size: 13px; margin-top: 6px; }
+.lc-crumb { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
+.lc-intro { border: 1px solid var(--border); border-radius: 10px; padding: 6px 18px 12px; margin: 16px 0; background: var(--card); }
+.lc-list { list-style: none; padding: 0; }
+.lc-list li { padding: 8px 4px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: baseline; }
+.lc-list-side li { font-size: 13px; border-bottom: none; padding: 4px 0; }
+.lc-done a { color: var(--muted); }
+.lc-cur { font-weight: 600; }
+.lc-diff { font-size: 12px; border-radius: 4px; padding: 1px 6px; }
+.lc-diff-简单 { background: #dcfce7; color: #15803d; }
+.lc-diff-中等 { background: #fef9c3; color: #a16207; }
+.lc-diff-困难 { background: #fee2e2; color: #b91c1c; }
+.lc-p-head { border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px; }
+.lc-p-meta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.lc-toggle { margin-left: auto; }
+.lc-side { max-height: 80vh; overflow-y: auto; }
+
 /* settings */
 .settings-group { border: 1px solid var(--border); border-radius: 10px; margin: 18px 0; padding: 14px 18px; }
 .settings-group legend { font-weight: 600; padding: 0 8px; }

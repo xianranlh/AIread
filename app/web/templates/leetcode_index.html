@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}LeetCode Hot 100 · {{ site_title }}{% endblock %}
+{% block content %}
+<div class="lc-head">
+  <h1>🔥 LeetCode Hot 100</h1>
+  <p class="muted">按专题分组、由易到难。每个专题先看「入门讲义」，再按顺序刷题——小白照着顺序走就行。</p>
+  <div class="lc-total">
+    <div class="lc-bar"><div class="lc-bar-fill" style="width: {{ (done * 100 / total) | round(1) if total else 0 }}%"></div></div>
+    <span>总进度 {{ done }} / {{ total }}</span>
+    {% if next_p %}<a class="btn-primary" href="/leetcode/p/{{ next_p.id }}">▶ 继续刷题：{{ next_p.title }}</a>{% endif %}
+  </div>
+</div>
+<div class="lc-cats">
+  {% for c in cats %}
+  <a class="lc-cat-card" href="/leetcode/cat/{{ c.slug }}">
+    <div class="lc-cat-name">{{ loop.index }}. {{ c.name }}</div>
+    <div class="lc-bar lc-bar-sm"><div class="lc-bar-fill" style="width: {{ (c.done * 100 / c.total) | round(1) if c.total else 0 }}%"></div></div>
+    <div class="lc-cat-stat muted">{{ c.done }} / {{ c.total }} 题</div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

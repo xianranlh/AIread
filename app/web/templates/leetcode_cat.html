@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ cat.name }} · Hot 100 · {{ site_title }}{% endblock %}
+{% block content %}
+<nav class="lc-crumb"><a href="/leetcode">← Hot 100</a>
+  {% for c in cats %}<a class="chip{% if c.slug == cat.slug %} chip-active{% endif %}" href="/leetcode/cat/{{ c.slug }}">{{ c.name }}</a>{% endfor %}
+</nav>
+<h1>{{ cat.name }}</h1>
+{% if intro_html %}
+<section class="lc-intro">
+  <h2>📖 入门讲义</h2>
+  <div class="prose">{{ intro_html | safe }}</div>
+</section>
+{% endif %}
+<section>
+  <h2>📝 题目列表（按推荐顺序）</h2>
+  <ul class="lc-list">
+    {% for p in probs %}
+    <li class="{% if p.done %}lc-done{% endif %}">
+      <span class="lc-check">{% if p.done %}✅{% else %}⬜{% endif %}</span>
+      <a href="/leetcode/p/{{ p.id }}">{{ p.ord }}. {{ p.title }}</a>
+      <span class="lc-diff lc-diff-{{ p.difficulty }}">{{ p.difficulty }}</span>
+      <span class="muted">LC {{ p.lc_id }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

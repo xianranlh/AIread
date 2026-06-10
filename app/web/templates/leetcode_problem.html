@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ p.title }} · Hot 100 · {{ site_title }}{% endblock %}
+{% block content %}
+<div class="notes-layout">
+  <aside class="notes-tree lc-side">
+    <p><a href="/leetcode">← Hot 100</a></p>
+    <p><strong><a href="/leetcode/cat/{{ cat.slug }}">{{ cat.name }}</a></strong></p>
+    <ul class="lc-list lc-list-side">
+      {% for s in siblings %}
+      <li class="{% if s.id == p.id %}lc-cur{% endif %}">
+        {% if s.done %}✅{% else %}⬜{% endif %}
+        <a href="/leetcode/p/{{ s.id }}">{{ s.title }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </aside>
+  <main class="notes-content">
+    <div class="lc-p-head">
+      <h1>{{ p.ord }}. {{ p.title }}</h1>
+      <div class="lc-p-meta">
+        <span class="lc-diff lc-diff-{{ p.difficulty }}">{{ p.difficulty }}</span>
+        <a href="{{ p.url }}" target="_blank" rel="noopener">力扣 {{ p.lc_id }} 原题 ↗</a>
+        <form method="post" action="/leetcode/p/{{ p.id }}/toggle" class="lc-toggle">
+          <button type="submit" class="{% if p.done %}btn-test{% else %}btn-primary{% endif %}">
+            {% if p.done %}✅ 已掌握（点击取消）{% else %}标记为已掌握{% endif %}
+          </button>
+        </form>
+      </div>
+    </div>
+    <div class="prose">{{ content_html | safe }}</div>
+    <div class="pager">
+      <span>{% if prev %}<a href="/leetcode/p/{{ prev.id }}">← {{ prev.title }}</a>{% endif %}</span>
+      <span>{% if nxt %}<a href="/leetcode/p/{{ nxt.id }}">{{ nxt.title }} →</a>{% endif %}</span>
+    </div>
+  </main>
+</div>
+{% endblock %}

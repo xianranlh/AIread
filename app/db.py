@@ -134,6 +134,27 @@ CREATE TABLE IF NOT EXISTS note_files (   -- 笔记库：导入的 GitHub 仓库
   content TEXT NOT NULL         -- markdown 原文
 );
 CREATE INDEX IF NOT EXISTS idx_note_files_item ON note_files(item_id);
+
+CREATE TABLE IF NOT EXISTS lc_categories (  -- LeetCode Hot 100 分类（含小白入门讲义）
+  slug  TEXT PRIMARY KEY,
+  name  TEXT NOT NULL,
+  ord   INTEGER DEFAULT 0,
+  intro TEXT                  -- markdown 入门讲义（什么是哈希表/双指针…）
+);
+
+CREATE TABLE IF NOT EXISTS lc_problems (    -- LeetCode Hot 100 题目讲义
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  category   TEXT NOT NULL REFERENCES lc_categories(slug),
+  ord        INTEGER DEFAULT 0,  -- 全局顺序 1..100（推荐刷题顺序）
+  lc_id      INTEGER,            -- 力扣题号
+  title      TEXT NOT NULL,
+  difficulty TEXT,               -- 简单/中等/困难
+  url        TEXT,               -- 力扣题目链接
+  content    TEXT,               -- markdown 讲义（题意/思路/双语代码/复杂度）
+  done       INTEGER DEFAULT 0,  -- 已掌握标记
+  done_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_lc_problems_cat ON lc_problems(category, ord);
 """
 
 FTS_SCHEMA = """
