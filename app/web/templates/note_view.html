@@ -4,10 +4,15 @@
 <article class="detail">
   <div class="card-head">
     <span class="badge badge-src">笔记</span>
-    <span class="muted">{{ note.created_at[:16].replace("T", " ") }} · {{ note.model }}</span>
+    <span class="muted">{{ note.created_at[:16].replace("T", " ") }} · {{ note.model }}
+      {% if note.updated_at %}· 已编辑 {{ note.updated_at[:16].replace("T", " ") }}{% endif %}</span>
   </div>
+  {% if linked %}
+  <p class="note-linked">📎 关联文章：<a href="/item/{{ linked.id }}">{{ linked.title }}</a></p>
+  {% endif %}
   <div class="prose">{{ content | safe }}</div>
   <div class="ai-actions" style="margin-top:18px">
+    <a class="btn-primary" style="text-decoration:none" href="/notes/{{ note.id }}/edit">✏️ 编辑</a>
     <a class="btn-test" style="text-decoration:none" href="/notes/{{ note.id }}.md">下载 .md</a>
     {% if note.source_url %}<a class="muted" href="{{ note.source_url }}" target="_blank">来源页面 ↗</a>{% endif %}
     <a class="muted" href="/notes">← 全部笔记</a>

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ site_title }}{% endblock %}</title>
-<link rel="stylesheet" href="/static/style.css?v=20260610b">
+<link rel="stylesheet" href="/static/style.css?v=20260611d">
 <link rel="alternate" type="application/rss+xml" title="{{ site_title }}" href="/feed.xml">
 </head>
 <body>
@@ -45,25 +45,48 @@
 </footer>
 <div id="ai-fab" title="AI 笔记助手 · 点击打开 / 右键带选中内容打开 / 可拖动">✨</div>
 <div id="ai-panel" hidden>
+  <div class="ai-rz ai-rz-l" data-rz="l"></div><div class="ai-rz ai-rz-r" data-rz="r"></div>
+  <div class="ai-rz ai-rz-t" data-rz="t"></div><div class="ai-rz ai-rz-b" data-rz="b"></div>
+  <div class="ai-rz ai-rz-tl" data-rz="tl"></div><div class="ai-rz ai-rz-tr" data-rz="tr"></div>
+  <div class="ai-rz ai-rz-bl" data-rz="bl"></div><div class="ai-rz ai-rz-br" data-rz="br"></div>
   <div class="ai-panel-head">
-    <strong>AI 笔记助手</strong>
+    <div class="ai-tabs">
+      <button id="ai-tab-chat" class="ai-tab ai-tab-active" type="button">💬 对话</button>
+      <button id="ai-tab-note" class="ai-tab" type="button">📝 笔记</button>
+    </div>
     <select id="ai-model" title="选择模型"></select>
+    <button id="ai-clear" type="button" title="清空对话">🗑</button>
     <button id="ai-close" type="button" title="关闭">✕</button>
   </div>
   <div id="ai-ctx" class="ai-ctx"></div>
-  <textarea id="ai-instr" rows="2" maxlength="500" placeholder="补充要求（可选）：例如「重点讲原理，给最小代码示例」"></textarea>
-  <div class="ai-actions">
-    <button id="ai-gen" class="btn-primary" type="button">生成笔记</button>
-    <span id="ai-status" class="muted"></span>
+
+  <div id="ai-view-chat" class="ai-view">
+    <div id="ai-chat" class="ai-chat">
+      <div class="ai-chat-empty" id="ai-chat-empty">围绕本页内容随便问，支持多轮追问。<br>回复可一键「📌 标注到原文」。</div>
+    </div>
+    <div class="ai-input-row">
+      <textarea id="ai-instr" rows="2" maxlength="2000" placeholder="和 AI 讨论这篇内容…（Ctrl+Enter 发送）"></textarea>
+      <button id="ai-send" class="btn-primary" type="button">发送</button>
+    </div>
   </div>
-  <div id="ai-result" class="prose ai-result"></div>
-  <div class="ai-actions" id="ai-export" hidden>
-    <button id="ai-copy" class="btn-test" type="button">复制 Markdown</button>
-    <button id="ai-dl" class="btn-test" type="button">下载 .md</button>
-    <a href="/notes" target="_blank" class="muted">全部笔记 →</a>
+
+  <div id="ai-view-note" class="ai-view" hidden>
+    <textarea id="ai-note-instr" rows="2" maxlength="500" placeholder="补充要求（可选）：例如「重点讲原理，给最小代码示例」"></textarea>
+    <div class="ai-actions">
+      <button id="ai-gen" class="btn-primary" type="button">生成结构化笔记</button>
+      <label class="ai-check"><input type="checkbox" id="ai-with-chat" checked> 带上对话要点</label>
+    </div>
+    <div id="ai-result" class="prose ai-result"></div>
+    <div class="ai-actions" id="ai-export" hidden>
+      <button id="ai-copy" class="btn-test" type="button">复制 Markdown</button>
+      <button id="ai-dl" class="btn-test" type="button">下载 .md</button>
+      <a href="/notes" target="_blank" class="muted">全部笔记 →</a>
+    </div>
   </div>
+
+  <div class="ai-status-bar"><span id="ai-status" class="muted"></span><span class="ai-resize-hint" title="拖动面板任意边缘/角可调整大小">⤡</span></div>
 </div>
-<script src="/static/assistant.js"></script>
+<script src="/static/assistant.js?v=20260611d"></script>
 <script>/* 点击其他位置时收起「更多」菜单 */
 document.addEventListener('click', function (e) {
   var d = document.querySelector('.nav-more');

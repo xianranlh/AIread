@@ -27,15 +27,15 @@
     showPopup(x, y, "翻译中…");
     fetch("/translate", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": authHeader() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: text })
-    }).then(function (r) { if (r.status === 401) { pwd = ""; throw new Error("密码错误，请重试"); } return r.json(); })
+    }).then(function (r) { return r.json(); })
       .then(function (d) { if (!d.ok) throw new Error(d.error || "翻译失败"); showPopup(x, y, d.text); })
       .catch(function (e) { showPopup(x, y, "✗ " + e.message); });
   }
 
-  function auth() { if (!pwd) pwd = window.prompt("管理密码（用户名 " + ADMIN_USER + "）") || ""; return pwd; }
-  function authHeader() { return "Basic " + btoa(ADMIN_USER + ":" + pwd); }
+  function auth() { return true; }  // 已全站免登录
+  function authHeader() { return ""; }
 
   // ---------- 文本定位 ----------
   function textNodes() {
@@ -202,8 +202,8 @@
     var url, body;
     if (editingId) { url = ITEM + "/annotations/" + editingId; body = { note: note }; }
     else { url = ITEM + "/annotations"; body = { quote: pending.quote, occurrence: pending.occurrence, note: note, note_id: NOTE_ID || null }; }
-    fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": authHeader() }, body: JSON.stringify(body) })
-      .then(function (r) { if (r.status === 401) { pwd = ""; throw new Error("密码错误，请重试"); } return r.json(); })
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); })
       .then(function (d) { if (!d.ok) throw new Error(d.error || "保存失败"); editor.hidden = true; reload(); })
       .catch(function (e) { alert("✗ " + e.message); });
   });
@@ -211,8 +211,8 @@
   function del(id) {
     if (!auth()) return;
     if (!window.confirm("删除这条批注？")) return;
-    fetch(ITEM + "/annotations/" + id, { method: "DELETE", headers: { "Authorization": authHeader() } })
-      .then(function (r) { if (r.status === 401) { pwd = ""; throw new Error("密码错误"); } return r.json(); })
+    fetch(ITEM + "/annotations/" + id, { method: "DELETE", })
+      .then(function (r) { return r.json(); })
       .then(function (d) { if (!d.ok) throw new Error("删除失败"); reload(); })
       .catch(function (e) { alert("✗ " + e.message); });
   }
@@ -256,5 +256,6 @@
   });
   window.addEventListener("resize", layoutNotes);
   window.addEventListener("load", function () { setTimeout(layoutNotes, 50); });
+  window.addEventListener("annot-reload", reload);   // AI 助手标注后刷新
   loadAnnotations();
 })();

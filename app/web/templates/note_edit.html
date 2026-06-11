@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}编辑笔记 · {{ site_title }}{% endblock %}
+{% block content %}
+<article class="detail">
+  <h1>✏️ 编辑笔记</h1>
+  <form method="post" action="/notes/{{ note.id }}/edit" class="note-edit-form">
+    <label>标题
+      <input type="text" name="title" value="{{ note.title or '' }}" maxlength="200">
+    </label>
+    <label>关联文章（选填，关联后可在文章页看到这条笔记）
+      <select name="item_id">
+        <option value="">— 不关联 —</option>
+        {% if linked %}<option value="{{ linked.id }}" selected>#{{ linked.id }} {{ linked.title }}</option>{% endif %}
+        {% for r in recent %}{% if not linked or r.id != linked.id %}
+        <option value="{{ r.id }}">#{{ r.id }} {{ r.title[:60] }}</option>
+        {% endif %}{% endfor %}
+      </select>
+    </label>
+    <label>内容（Markdown）
+      <textarea name="content_md" rows="22" required>{{ note.content_md }}</textarea>
+    </label>
+    <div class="ai-actions">
+      <button type="submit" class="btn-primary">保存</button>
+      <a class="muted" href="/notes/{{ note.id }}">取消</a>
+    </div>
+  </form>
+</article>
+{% endblock %}

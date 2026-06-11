@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS notes (
   item_id    INTEGER,
   content_md TEXT NOT NULL,
   model      TEXT,
-  created_at TEXT
+  created_at TEXT,
+  updated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS quiz_questions (
@@ -231,6 +232,10 @@ def init_db(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE quiz_questions ADD COLUMN section TEXT")
         if "ord" not in qcols:
             conn.execute("ALTER TABLE quiz_questions ADD COLUMN ord INTEGER DEFAULT 0")
+    # 轻量迁移：给已存在的 notes（我的笔记）补 updated_at（编辑功能）
+    ncols2 = {r["name"] for r in conn.execute("PRAGMA table_info(notes)")}
+    if ncols2 and "updated_at" not in ncols2:
+        conn.execute("ALTER TABLE notes ADD COLUMN updated_at TEXT")
     conn.commit()
 
 

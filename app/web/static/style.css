@@ -152,6 +152,18 @@ nav a:hover { color: var(--accent); text-decoration: none; }
 .lc-rate-3 { border-color: #86efac; } .lc-rate-3:hover { background: #dcfce7; }
 .lc-rate-4 { border-color: #93c5fd; } .lc-rate-4:hover { background: #dbeafe; }
 
+/* my notes (编辑 + 文章关联) */
+.note-edit-form label { display: block; margin: 14px 0; font-weight: 600; }
+.note-edit-form input, .note-edit-form select, .note-edit-form textarea {
+  display: block; width: 100%; box-sizing: border-box; margin-top: 6px;
+  background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+  border-radius: 8px; padding: 8px 12px; font-size: 14px; font-weight: 400;
+}
+.note-edit-form textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.6; }
+.note-linked { background: var(--chip); border-radius: 8px; padding: 8px 14px; font-size: 14px; }
+.note-link-badge { font-size: 12px; background: var(--chip); border-radius: 4px; padding: 1px 8px; color: var(--muted); white-space: nowrap; }
+.my-notes-sec { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 8px; }
+
 /* settings */
 .settings-group { border: 1px solid var(--border); border-radius: 10px; margin: 18px 0; padding: 14px 18px; }
 .settings-group legend { font-weight: 600; padding: 0 8px; }
@@ -305,29 +317,78 @@ mark.annot.annot-hover { background: #ffe08a; }
 #ai-panel {
   position: fixed; z-index: 1000; background: var(--card);
   border: 1px solid var(--border); border-radius: 14px;
-  box-shadow: 0 10px 36px rgba(0,0,0,.3);
-  padding: 14px 16px; max-height: 72vh; overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,.28);
+  padding: 12px 14px 6px; display: flex; flex-direction: column;
+  width: 520px; height: 640px;
+  min-width: 340px; min-height: 360px; max-width: 96vw; max-height: 92vh;
+  overflow: hidden;
 }
-.ai-panel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.ai-panel-head strong { flex-shrink: 0; }
+#ai-panel[hidden] { display: none; }
+/* 四边 + 四角拖拽手柄（任意方向调整宽高） */
+.ai-rz { position: absolute; z-index: 5; touch-action: none; }
+.ai-rz-l, .ai-rz-r { top: 12px; bottom: 12px; width: 7px; cursor: ew-resize; }
+.ai-rz-l { left: -3px; } .ai-rz-r { right: -3px; }
+.ai-rz-t, .ai-rz-b { left: 12px; right: 12px; height: 7px; cursor: ns-resize; }
+.ai-rz-t { top: -3px; } .ai-rz-b { bottom: -3px; }
+.ai-rz-tl, .ai-rz-tr, .ai-rz-bl, .ai-rz-br { width: 14px; height: 14px; }
+.ai-rz-tl { top: -4px; left: -4px; cursor: nwse-resize; }
+.ai-rz-br { bottom: -4px; right: -4px; cursor: nwse-resize; }
+.ai-rz-tr { top: -4px; right: -4px; cursor: nesw-resize; }
+.ai-rz-bl { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.ai-rz:hover { background: rgba(127,127,127,.18); border-radius: 4px; }
+.ai-panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-shrink: 0; }
+.ai-tabs { display: flex; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 2px; flex-shrink: 0; }
+.ai-tab {
+  background: none; border: 0; border-radius: 7px; padding: 4px 12px;
+  font-size: 13px; color: var(--muted); cursor: pointer; white-space: nowrap;
+}
+.ai-tab-active { background: var(--card); color: var(--fg); font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0,0,0,.12); }
 .ai-panel-head select {
   flex: 1; min-width: 0; background: var(--bg); color: var(--fg);
   border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; font-size: 13px;
 }
-#ai-close { background: none; border: 0; color: var(--muted); font-size: 15px; cursor: pointer; }
+#ai-close, #ai-clear { background: none; border: 0; color: var(--muted); font-size: 15px; cursor: pointer; flex-shrink: 0; }
+#ai-close:hover, #ai-clear:hover { color: var(--fg); }
+.ai-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.ai-view[hidden] { display: none; }
+.ai-chat { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 10px; padding: 2px 2px 8px; }
+.ai-chat-empty { color: var(--muted); font-size: 13px; text-align: center; margin: auto; line-height: 2; }
+.ai-msg-user .ai-msg-body {
+  background: var(--accent); color: #fff; border-radius: 12px 12px 2px 12px;
+  padding: 8px 12px; font-size: 14px; margin-left: 48px; white-space: pre-wrap; word-break: break-word;
+}
+.ai-msg-assistant .ai-msg-body {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px 12px 12px 2px;
+  padding: 8px 12px; font-size: 14px; margin-right: 24px;
+}
+.ai-msg-assistant .ai-msg-body h1 { font-size: 16px; } .ai-msg-assistant .ai-msg-body h2 { font-size: 14px; margin: 10px 0 4px; }
+.ai-msg-acts { display: flex; gap: 8px; margin: 4px 0 0 2px; }
+.ai-msg-acts button {
+  background: none; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--muted); font-size: 12px; padding: 2px 8px; cursor: pointer;
+}
+.ai-msg-acts button:hover { color: var(--accent); border-color: var(--accent); }
+.ai-input-row { display: flex; gap: 8px; align-items: flex-end; flex-shrink: 0; padding-top: 8px; border-top: 1px solid var(--border); }
+.ai-input-row textarea { flex: 1; margin-bottom: 0 !important; }
+.ai-input-row .btn-primary { flex-shrink: 0; height: 38px; }
 .ai-ctx {
-  font-size: 13px; color: var(--muted); background: var(--bg);
-  border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px;
-  word-break: break-all;
+  font-size: 12px; color: var(--muted); background: var(--bg);
+  border: 1px dashed var(--border); border-radius: 8px; padding: 6px 10px; margin-bottom: 8px;
+  word-break: break-all; flex-shrink: 0; max-height: 76px; overflow-y: auto; overscroll-behavior: contain;
 }
 #ai-panel textarea {
-  width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+  width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border); color: var(--fg);
   border-radius: 8px; padding: 8px 10px; font-size: 14px; font-family: inherit;
-  resize: vertical; margin-bottom: 10px;
+  resize: none; margin-bottom: 10px;
 }
-.ai-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0; }
-.ai-result { font-size: 14px; margin-top: 10px; }
+.ai-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0; flex-shrink: 0; }
+.ai-check { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.ai-result { font-size: 14px; margin-top: 6px; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; }
 .ai-result h1 { font-size: 18px; } .ai-result h2 { font-size: 15px; margin: 14px 0 6px; }
+.ai-status-bar { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 4px 2px 2px; min-height: 20px; }
+.ai-status-bar .muted { font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-resize-hint { color: var(--muted); font-size: 13px; cursor: nwse-resize; user-select: none; }
 .link-btn { background: none; border: 0; color: var(--accent); cursor: pointer; font-size: inherit; padding: 0; }
 
 /* 八股复习系统 */

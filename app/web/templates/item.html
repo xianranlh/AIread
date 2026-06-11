@@ -60,9 +60,25 @@
     {% for t in item.tags %}<a class="tag" href="/tag/{{ t }}">#{{ t }}</a>{% endfor %}
   </div>
 
+  {% if my_notes %}
+  <section class="my-notes-sec">
+    <h2>📝 我的笔记</h2>
+    <ul class="archive-list">
+      {% for n in my_notes %}
+      <li>
+        <a href="/notes/{{ n.id }}">{{ n.title or "未命名笔记" }}</a>
+        <span class="muted">{{ n.created_at[:16].replace("T", " ") }}
+          {% if n.updated_at %}· 已编辑{% endif %}</span>
+        <a style="margin-left:auto" href="/notes/{{ n.id }}/edit">编辑</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   <section class="ask-sec">
     <h2>💬 继续提问</h2>
-    <p class="muted">基于该条目的 README/讲解材料由 AI 回答（需管理密码，会产生少量 token 费用）</p>
+    <p class="muted">基于该条目的 README/讲解材料由 AI 回答（会产生少量 token 费用）</p>
     <div class="ask-box">
       <textarea id="ask-q" rows="2" maxlength="500" placeholder="例如：它和同类项目相比的核心差异是什么？"></textarea>
       <button id="ask-btn" class="btn-primary" type="button">提问</button>
@@ -90,27 +106,19 @@
 {% endif %}
 
 <script>
-var ADMIN_USER = "{{ admin_username }}";
 (function () {
-  var pwd = "";
   var btn = document.getElementById("ask-btn");
   var out = document.getElementById("ask-out");
   btn.addEventListener("click", function () {
     var q = document.getElementById("ask-q").value.trim();
     if (!q) { return; }
-    if (!pwd) { pwd = window.prompt("管理密码（用户名 " + ADMIN_USER + "）") || ""; }
-    if (!pwd) { return; }
     out.textContent = "思考中…（约 10-30 秒）";
     btn.disabled = true;
     fetch(window.location.pathname + "/ask", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Basic " + btoa(ADMIN_USER + ":" + pwd)
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({question: q})
     }).then(function (r) {
-      if (r.status === 401) { pwd = ""; throw new Error("密码错误，请重试"); }
       return r.json();
     }).then(function (d) {
       if (d.ok) {
@@ -136,6 +144,6 @@ var ADMIN_USER = "{{ admin_username }}";
   </div>
 </div>
 
-<script src="/static/annot.js"></script>
+<script src="/static/annot.js?v=20260611"></script>
 {% endif %}
 {% endblock %}

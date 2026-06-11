@@ -159,9 +159,13 @@ def item_detail(request: Request, item_id: int):
                 if i < len(sibs) - 1:
                     next_item = sibs[i + 1]
                 break
+        my_notes = conn.execute(
+            "SELECT id, title, created_at, updated_at FROM notes WHERE item_id=? ORDER BY id DESC",
+            (item_id,)).fetchall()
         return render("item.html", ctx(
             request, item=items[0], related=related,
-            prev_item=prev_item, next_item=next_item))
+            prev_item=prev_item, next_item=next_item,
+            my_notes=[dict(n) for n in my_notes]))
     finally:
         conn.close()
 
@@ -827,19 +831,11 @@ def api_models():
     return {"models": out}
 
 
-@app.post("/api/note")
-async def api_note(request: Request, _: str = Depends(require_admin)):
-    """生成结构化 Markdown 笔记并保存。"""
-    try:
-        data = await request.json()
-    except Exception:  # noqa: BLE001
-        raise HTTPException(400, "需要 JSON body")
-    role = data.get("role") or "explainer"
-    if role not in ROLES:
-        raise HTTPException(400, "未知模型角色")
-    instruction = (data.get("instruction") or "").strip()[:500]
-    selection = (data.get("selection") or "").strip()[:8000]
-    page = data.get("page") or {}
+def _assistant_context(page: dict, selection: str) -> tuple[list[str], str, str, int | None]:
+    """组装助手上下文（页面信息 + 条目讲解/材料 + 选中文本）。
+
+    返回 (parts, title, url, item_id)。
+    """
     title = (page.get("title") or "")[:200]
     url = (page.get("url") or "")[:500]
     item_id = page.get("item_id")
@@ -862,6 +858,63 @@ async def api_note(request: Request, _: str = Depends(require_admin)):
             conn.close()
     if selection:
         parts.append(f"用户选中的内容:\n{selection}")
+    return parts, title, url, item_id
+
+
+CHAT_SYSTEM = """你是「AI 技术雷达」的学习对话助手，和用户围绕给定的页面/文章上下文展开多轮讨论。
+要求：中文、直接、简洁，多用列表和小段代码；材料没有的信息明确说「材料中没有提到」，不要编造。
+回答用 Markdown，正文要能独立成一条批注/笔记（不要寒暄、不要复述问题）。"""
+
+
+@app.post("/api/assistant/chat")
+async def api_assistant_chat(request: Request, _: str = Depends(require_admin)):
+    """AI 笔记助手多轮对话：历史拼接进 prompt（provider 仅有单轮 complete 接口）。"""
+    try:
+        data = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "需要 JSON body")
+    role = data.get("role") or "explainer"
+    if role not in ROLES:
+        raise HTTPException(400, "未知模型角色")
+    message = (data.get("message") or "").strip()[:4000]
+    if not message:
+        raise HTTPException(400, "message 为空")
+    selection = (data.get("selection") or "").strip()[:8000]
+    history = data.get("history") or []
+    parts, _t, _u, _i = _assistant_context(data.get("page") or {}, selection)
+    if history:
+        lines = []
+        for h in history[-12:]:                       # 最多带最近 12 轮，防 prompt 过长
+            who = "用户" if h.get("role") == "user" else "助手"
+            lines.append(f"{who}：{(h.get('content') or '')[:2000]}")
+        parts.append("之前的对话：\n" + "\n\n".join(lines))
+    parts.append(f"用户本轮提问：{message}")
+    from app.llm.router import RoutedLLM
+    try:
+        resp = RoutedLLM(role).complete(
+            CHAT_SYSTEM, "\n\n".join(parts), max_tokens=2000)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:300]}
+    md_text = resp.text.strip()
+    fence = re.match(r"^```(?:markdown)?\s*(.*?)```\s*$", md_text, re.S)
+    if fence:
+        md_text = fence.group(1).strip()
+    return {"ok": True, "markdown": md_text, "html": render_md(md_text), "model": resp.model}
+
+
+@app.post("/api/note")
+async def api_note(request: Request, _: str = Depends(require_admin)):
+    """生成结构化 Markdown 笔记并保存。"""
+    try:
+        data = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "需要 JSON body")
+    role = data.get("role") or "explainer"
+    if role not in ROLES:
+        raise HTTPException(400, "未知模型角色")
+    instruction = (data.get("instruction") or "").strip()[:500]
+    selection = (data.get("selection") or "").strip()[:8000]
+    parts, title, url, item_id = _assistant_context(data.get("page") or {}, selection)
     if instruction:
         parts.append(f"用户补充要求: {instruction}")
     from app.llm.router import RoutedLLM
@@ -898,8 +951,10 @@ def notes_list(request: Request, _: str = Depends(require_admin)):
     conn = _conn()
     try:
         rows = conn.execute(
-            "SELECT id, title, source_url, model, created_at FROM notes ORDER BY id DESC LIMIT 200"
-        ).fetchall()
+            """SELECT n.id, n.title, n.source_url, n.model, n.created_at,
+                      n.item_id, i.title AS item_title
+               FROM notes n LEFT JOIN items i ON i.id = n.item_id
+               ORDER BY n.id DESC LIMIT 200""").fetchall()
         return render("notes.html", ctx(request, notes=rows))
     finally:
         conn.close()
@@ -939,10 +994,62 @@ def note_view(request: Request, note_id: int, _: str = Depends(require_admin)):
         row = conn.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()
         if not row:
             return render("404.html", ctx(request), status_code=404)
+        linked = None
+        if row["item_id"]:
+            linked = conn.execute("SELECT id, title FROM items WHERE id=?",
+                                  (row["item_id"],)).fetchone()
         return render("note_view.html", ctx(
-            request, note=row, content=render_md(row["content_md"])))
+            request, note=row, content=render_md(row["content_md"]),
+            linked=dict(linked) if linked else None))
     finally:
         conn.close()
+
+
+@app.get("/notes/{note_id}/edit", response_class=HTMLResponse)
+def note_edit_page(request: Request, note_id: int, _: str = Depends(require_admin)):
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()
+        if not row:
+            return render("404.html", ctx(request), status_code=404)
+        linked = None
+        if row["item_id"]:
+            linked = conn.execute("SELECT id, title FROM items WHERE id=?",
+                                  (row["item_id"],)).fetchone()
+        # 供「关联文章」下拉选择的最近条目
+        recent = conn.execute(
+            """SELECT id, title FROM items WHERE status IN ('selected','explained')
+               ORDER BY id DESC LIMIT 100""").fetchall()
+        return render("note_edit.html", ctx(
+            request, note=row, linked=dict(linked) if linked else None,
+            recent=[dict(r) for r in recent]))
+    finally:
+        conn.close()
+
+
+@app.post("/notes/{note_id}/edit")
+def note_edit_save(note_id: int, title: str = Form(""), content_md: str = Form(...),
+                   item_id: str = Form(""), _: str = Depends(require_admin)):
+    iid = None
+    if item_id.strip():
+        try:
+            iid = int(item_id.strip())
+        except ValueError:
+            raise HTTPException(400, "item_id 须为数字")
+    conn = _conn()
+    try:
+        if iid is not None and not conn.execute(
+                "SELECT 1 FROM items WHERE id=?", (iid,)).fetchone():
+            raise HTTPException(400, f"条目 #{iid} 不存在")
+        cur = conn.execute(
+            "UPDATE notes SET title=?, content_md=?, item_id=?, updated_at=? WHERE id=?",
+            (title.strip()[:200] or "未命名笔记", content_md, iid, now_iso(), note_id))
+        if cur.rowcount == 0:
+            raise HTTPException(404, "笔记不存在")
+        conn.commit()
+    finally:
+        conn.close()
+    return RedirectResponse(f"/notes/{note_id}", status_code=303)
 
 
 @app.post("/notes/{note_id}/delete")

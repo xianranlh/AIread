@@ -10,8 +10,10 @@
   {% for n in notes %}
   <li>
     <a href="/notes/{{ n.id }}">{{ n.title or "未命名笔记" }}</a>
+    {% if n.item_id %}<a class="note-link-badge" href="/item/{{ n.item_id }}" title="{{ n.item_title }}">📎 {{ (n.item_title or '#' ~ n.item_id)[:24] }}</a>{% endif %}
     <span class="muted">{{ n.created_at[:16].replace("T", " ") }} · {{ n.model }}</span>
     <span style="margin-left:auto; display:flex; gap:10px;">
+      <a href="/notes/{{ n.id }}/edit">编辑</a>
       {% if n.source_url %}<a class="muted" href="{{ n.source_url }}" target="_blank">来源↗</a>{% endif %}
       <a href="/notes/{{ n.id }}.md">下载</a>
       <form method="post" action="/notes/{{ n.id }}/delete" style="display:inline"
